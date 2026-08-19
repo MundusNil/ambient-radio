@@ -4,6 +4,9 @@ AI 氛围电台：一条常开的时间线，音乐永远是主体，主播**梦
 
 - 产品需求：[`docs/product-requirements.md`](docs/product-requirements.md)
 - 技术设计：[`docs/technical-design.md`](docs/technical-design.md)
+- 协作规范：[`docs/guide/团队协作与开发规范.md`](docs/guide/团队协作与开发规范.md)
+- AI 工程化 SOP：[`docs/guide/AI原生工程化SOP.md`](docs/guide/AI原生工程化SOP.md)
+- AI 入口宪法：[`AGENTS.md`](AGENTS.md)
 
 ## 结构
 

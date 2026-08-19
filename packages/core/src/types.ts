@@ -44,6 +44,8 @@ export interface Segment {
   kind: SegmentKind;
   text: string;
   audioPath: string | null;
+  /** 语音时长（TTS 完成后回填；引擎 VOICE 状态机的时长依据） */
+  durationMs: number | null;
   plannedAt: number;
   airedAt: number | null;
   status: SegmentStatus;

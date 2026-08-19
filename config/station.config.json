@@ -11,11 +11,11 @@
     "forceReplyMs": 90000,
     "topicCooldownMs": 2400000,
     "topicChance": 0.15,
-    "prefetchRatio": 0.6,
+    "pendingTimeoutMs": 60000,
     "speakWhenAlone": false,
     "nodeWindow": {
       "minIntoTrackMs": 20000,
-      "maxFromTrackStartMs": 15000
+      "minBeforeTrackEndMs": 10000
     }
   },
   "scheduler": {

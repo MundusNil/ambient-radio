@@ -62,7 +62,8 @@ pnpm --filter @ambient-radio/web build   # 前端类型检查 + 构建（含 vue
 
 - **TDD**（`.agents/skills/tdd`）：core 纯逻辑红绿循环；seam 先约定，测试只走公共接口。
 - **垂直切片**：一个测试 → 一个实现 → 循环；禁止水平铺开（先写全部测试再写全部实现）。
-- **提交纪律**：Conventional Commits + 中文描述，如 `feat(core): 节目引擎状态机`、`fix(scheduler): 滑窗放宽标记`。scope 用包名（core/scheduler/engine/station/web/shared/adapters/config/docs）。
+- **提交纪律**：双语 Conventional Commits——`<type>(<scope>): <english>  <中文>`（英文与中文之间两个空格），如 `feat(engine): add natural node window  增加自然节点窗口`。scope 用包名（core/scheduler/engine/station/web/shared/adapters/config/docs）。
+- **落主线**：远程仓库配置后，「落主线」流程以 `docs/guide/land-main-workflow.md` 为唯一详细来源（PR 边界按 vertical slice 判断，不机械按目录拆分）。
 - **完成后自审**：用 `.agents/skills/code-review` 审查 diff 再提交。
 - **体验类改动**：请维护者亲自收听验证（Vibe Check 是本产品的核心门禁）。
 - **新技能安装**：优先 SkillHub（`~/.local/bin/skillhub --dir <skills 目录>`，全局策略）。

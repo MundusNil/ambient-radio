@@ -1,0 +1,84 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: radial-gradient(120% 90% at 50% 0%, #1b2130 0%, #0b0d15 62%), #0b0d15;
+  color: #e9e4d8;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  text-align: center;
+  user-select: none;
+}
+
+.on-air {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 28px;
+  font-size: 12px;
+  letter-spacing: 0.45em;
+  text-indent: 0.45em;
+  color: #8b8677;
+}
+
+.lamp {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 12px 2px rgb(229 72 77 / 45%);
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(30px, 6vw, 44px);
+  font-weight: 300;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+}
+
+.tagline {
+  margin: 18px 0 0;
+  font-size: 14px;
+  color: #a8a294;
+  letter-spacing: 0.12em;
+}
+
+.status {
+  margin: 42px 0 0;
+  font-size: 12px;
+  color: #5d5a4f;
+  letter-spacing: 0.2em;
+}

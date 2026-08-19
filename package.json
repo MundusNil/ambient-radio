@@ -1,0 +1,25 @@
+{
+  "name": "ambient-radio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI 氛围电台：音乐永远是主体，梦可按自己的节奏轻轻串场。",
+  "packageManager": "pnpm@11.16.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:station": "pnpm --filter @ambient-radio/station dev",
+    "dev:web": "pnpm --filter @ambient-radio/web dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.9",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

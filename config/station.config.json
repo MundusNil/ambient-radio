@@ -1,0 +1,66 @@
+{
+  "station": {
+    "name": "梦可电台",
+    "host": "梦可",
+    "port": 3000
+  },
+  "engine": {
+    "talkIntervalMs": [300000, 480000],
+    "minTalkGapMs": 90000,
+    "preferReplyMs": 45000,
+    "forceReplyMs": 90000,
+    "topicCooldownMs": 2400000,
+    "topicChance": 0.15,
+    "prefetchRatio": 0.6,
+    "speakWhenAlone": false,
+    "nodeWindow": {
+      "minIntoTrackMs": 20000,
+      "maxFromTrackStartMs": 15000
+    }
+  },
+  "scheduler": {
+    "noRepeatWindowMs": 1800000,
+    "styleBaseWeights": {
+      "game-bgm": 1.0,
+      "cafe": 1.0,
+      "vocal-soft": 0.6,
+      "night-quiet": 0.8
+    },
+    "timeOfDayBoost": {
+      "deepNight": { "night-quiet": 1.8, "vocal-soft": 1.2 },
+      "morning": { "cafe": 1.3 },
+      "afternoon": { "game-bgm": 1.2 },
+      "evening": {},
+      "lateNight": { "night-quiet": 1.5 }
+    },
+    "recencyPenaltyHalfLifePlays": 8
+  },
+  "audio": {
+    "ducking": {
+      "speechGain": 0.22,
+      "attackTauMs": 250,
+      "releaseDelayMs": 1200,
+      "releaseTauMs": 600
+    }
+  },
+  "llm": {
+    "provider": "deepseek",
+    "baseUrl": "https://api.deepseek.com",
+    "model": "deepseek-chat",
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "temperature": 0.8
+  },
+  "tts": {
+    "provider": "edge-tts",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "rate": "-10%",
+    "postProcess": "loudnorm",
+    "cacheDir": ".cache/tts"
+  },
+  "messages": {
+    "retentionDays": 7
+  },
+  "library": {
+    "root": "config/library"
+  }
+}

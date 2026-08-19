@@ -52,7 +52,7 @@ pnpm install          # 安装（workspace 全部）
 pnpm test             # Vitest（packages/*/src/**/*.test.ts）
 pnpm check            # Biome lint + 格式检查
 pnpm exec biome check --write .   # 自动修复格式
-pnpm dev:station      # 电台守护进程（Hono，:3000）
+pnpm dev:station      # 电台守护进程（Hono，:9730）
 pnpm dev:web          # 收音机面板（Vite）
 pnpm --filter @ambient-radio/core exec tsc --noEmit -p tsconfig.json   # 单包类型检查
 pnpm --filter @ambient-radio/web build   # 前端类型检查 + 构建（含 vue-tsc）

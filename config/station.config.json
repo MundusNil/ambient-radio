@@ -2,7 +2,7 @@
   "station": {
     "name": "梦可电台",
     "host": "梦可",
-    "port": 3000
+    "port": 9730
   },
   "engine": {
     "talkIntervalMs": [300000, 480000],

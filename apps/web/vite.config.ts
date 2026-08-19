@@ -5,10 +5,12 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [vue()],
   server: {
+    port: 9731,
+    strictPort: true,
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/audio': 'http://localhost:3000',
-      '/ws': { target: 'ws://localhost:3000', ws: true },
+      '/api': 'http://localhost:9730',
+      '/audio': 'http://localhost:9730',
+      '/ws': { target: 'ws://localhost:9730', ws: true },
     },
   },
 });

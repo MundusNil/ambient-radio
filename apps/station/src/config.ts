@@ -82,7 +82,7 @@ export function loadStationConfig(
     station: {
       name: raw.station?.name ?? '梦可电台',
       host: raw.station?.host ?? '梦可',
-      port: raw.station?.port ?? 3000,
+      port: raw.station?.port ?? 9730,
     },
     engine,
     scheduler,

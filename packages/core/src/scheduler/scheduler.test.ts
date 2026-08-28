@@ -168,3 +168,27 @@ describe('scheduler · 点歌队列（P2，FR-064）', () => {
     expect(s.pickNext(1_000).track.id).toBe('a');
   });
 });
+
+describe('scheduler · 故障拉黑（ER-004：单曲损坏跳下一首）', () => {
+  it('拉黑后不再选该曲，直到曲库无其他可选', () => {
+    const s = createScheduler({
+      tracks: [T('a', ['cafe']), T('b', ['cafe'])],
+      config: DEFAULT_SCHEDULER_CONFIG,
+      rng: fixed(0.5),
+    });
+    s.blacklistTrack('a');
+    expect(s.pickNext(0).track.id).toBe('b');
+    // 拉黑后即使滑窗内也绕过（损坏曲不参与任何选择）
+    expect(s.pickNext(1_000).track.id).toBe('b');
+  });
+
+  it('曲库全被拉黑时抛错（由组装层判定 ER-005 信号丢失）', () => {
+    const s = createScheduler({
+      tracks: [T('a', ['cafe'])],
+      config: DEFAULT_SCHEDULER_CONFIG,
+      rng: fixed(0.5),
+    });
+    s.blacklistTrack('a');
+    expect(() => s.pickNext(0)).toThrow();
+  });
+});

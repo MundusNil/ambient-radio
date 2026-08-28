@@ -34,6 +34,8 @@ export interface WsHandle {
   close(): void;
   /** 上行留言（P2） */
   sendMessage(body: string): void;
+  /** 上行任意原始消息（ER-004 track-failed 等） */
+  sendRaw(payload: string): void;
 }
 
 /** 连接电台事件流；断线 3s 后自动重连（收音机掉线自动重新调频） */
@@ -66,6 +68,11 @@ export function connectWs(onEvent: (event: ServerEvent) => void, onOpen?: () => 
     sendMessage(body: string) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'message', body } satisfies ClientEvent));
+      }
+    },
+    sendRaw(payload: string) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
       }
     },
   };

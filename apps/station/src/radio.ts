@@ -437,10 +437,55 @@ export function createRadio(deps: RadioDeps) {
     if (cleanupTimer !== null) clearInterval(cleanupTimer);
   }
 
+  /** ER-004/005：连续失败计数，≥3 进信号丢失状态 */
+  let consecutiveFailures = 0;
+
+  /** 单曲损坏：拉黑 + 强制换下一首（ER-004） */
+  function onTrackFailed(trackId: string): void {
+    const track = trackById.get(trackId);
+    if (!track) return;
+    scheduler.blacklistTrack(trackId);
+    consecutiveFailures += 1;
+    console.warn(
+      `[radio] ⚠️ 曲目播放失败（${track.title}）已拉黑，尝试下一首（ER-004，连续失败 ${consecutiveFailures}）`,
+    );
+    if (consecutiveFailures >= 3) {
+      console.error('[radio] 📡 连续 3 首失败：信号丢失（ER-005）');
+      broadcast({ type: 'off-air', reason: 'library' });
+      return;
+    }
+    // 强制换曲：选新曲并直接接管时间线（engine 无感知的覆盖，plays 由 startTrack 收尾）
+    try {
+      const now = clock.now();
+      const decision = scheduler.pickNext(now);
+      scheduler.reportStarted(decision.track.id, now);
+      if (currentPlayId !== null) {
+        deps.store.endPlay(currentPlayId, now);
+      }
+      currentPlayId = deps.store.startPlay(decision.track.id, now);
+      engine.onTrackStarted(decision.track, now);
+      broadcast({
+        type: 'track',
+        trackId: decision.track.id,
+        title: decision.track.title,
+        startedAt: now,
+        durationMs: decision.track.durationMs,
+      });
+    } catch {
+      // 曲库耗尽：信号丢失（ER-005）
+      console.error('[radio] 📡 曲库无可播放曲目：信号丢失（ER-005）');
+      broadcast({ type: 'off-air', reason: 'library' });
+    }
+  }
+
   /** 上行留言处理（P2）：入库（7 天保留）→ 引擎 SLA 队列 → 回执 */
   function handleClientMessage(ws: WebSocket, raw: string): void {
     try {
-      const parsed = JSON.parse(raw) as { type?: string; body?: string };
+      const parsed = JSON.parse(raw) as { type?: string; body?: string; trackId?: string };
+      if (parsed.type === 'track-failed' && typeof parsed.trackId === 'string') {
+        onTrackFailed(parsed.trackId);
+        return;
+      }
       if (parsed.type !== 'message' || typeof parsed.body !== 'string' || !parsed.body.trim()) {
         return;
       }

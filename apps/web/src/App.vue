@@ -21,6 +21,7 @@ const volume = ref(0.8);
 const connecting = ref(false);
 const hostTalking = ref(false);
 let hostTalkTimer: ReturnType<typeof setTimeout> | undefined;
+const offAir = ref(false);
 // P2 留言（FR-052：本次收听窗口内保留自己发送的留言；关台即清 FR-057）
 const messages = ref<Array<{ id: string; body: string }>>([]);
 const draft = ref('');
@@ -30,6 +31,12 @@ const audio = new RadioAudio();
 let ws: WsHandle | null = null;
 let clockOffset = 0;
 let statePollTimer: ReturnType<typeof setInterval> | null = null;
+// ER-004：解码失败上报电台跳过该曲
+audio.onTrackFailed = (trackId) => {
+  if (ws && live.value) {
+    ws.sendRaw(JSON.stringify({ type: 'track-failed', trackId }));
+  }
+};
 
 async function refreshState(): Promise<void> {
   const s = await fetchState().catch(() => null);
@@ -39,7 +46,10 @@ async function refreshState(): Promise<void> {
 }
 
 function handleEvent(event: ServerEvent): void {
-  if (event.type === 'sync') {
+  if (event.type === 'off-air') {
+    offAir.value = true;
+    audio.suspend();
+  } else if (event.type === 'sync') {
     state.value = event.state;
     if (live.value && event.state.trackId) {
       void audio.play(event.state.trackId, event.state.startedAt, clockOffset);
@@ -136,7 +146,11 @@ onUnmounted(() => {
       </p>
 
       <div class="now-playing" :class="{ silent: !live || !state?.title }">
-        <template v-if="live && state?.title">
+        <template v-if="offAir">
+          <span class="np-label">信号丢失</span>
+          <span class="np-title">曲库暂时无法播放，维护者处理中</span>
+        </template>
+        <template v-else-if="live && state?.title">
           <span class="np-label">正在播放</span>
           <span class="np-title">{{ state.title }}</span>
         </template>

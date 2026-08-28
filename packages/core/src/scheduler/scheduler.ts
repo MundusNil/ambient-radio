@@ -27,6 +27,8 @@ export interface Scheduler {
   reportStarted(trackId: string, at: number): void;
   /** 点歌队列（P2，FR-064）：受理的点歌优先播出；没有「点歌模式」概念（FR-066） */
   queueTrack(trackId: string): void;
+  /** 故障拉黑（ER-004）：单曲损坏后本次运行内不再选它；重启自然恢复 */
+  blacklistTrack(trackId: string): void;
 }
 
 export function createScheduler(options: SchedulerOptions): Scheduler {
@@ -39,6 +41,8 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
   const playLog: Array<{ trackId: string; at: number }> = [];
   /** 点歌队列（P2）：先进先出，播完即消费 */
   const requestQueue: string[] = [];
+  /** 故障拉黑集（ER-004）：本次运行内不再选 */
+  const blacklisted = new Set<string>();
 
   function pruneLog(now: number): void {
     const cutoff = now - 2 * 60 * 60 * 1000;
@@ -70,9 +74,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
 
   function pickNext(now: number): SchedulerDecision {
     pruneLog(now);
-    const enabled = tracks.filter((t) => t.enabled);
+    const enabled = tracks.filter((t) => t.enabled && !blacklisted.has(t.id));
     if (enabled.length === 0) {
-      throw new Error('曲库为空或全部禁用：无法选曲（ER-005 由组装层兜底）');
+      throw new Error('曲库为空或全部禁用/拉黑：无法选曲（ER-005 由组装层兜底）');
     }
     // 点歌队列优先（FR-064）：听众明确要求，跳过随机权重与滑窗（不标记放宽）
     const requested = requestQueue.shift();
@@ -119,5 +123,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     requestQueue.push(trackId);
   }
 
-  return { pickNext, reportStarted, queueTrack };
+  function blacklistTrack(trackId: string): void {
+    blacklisted.add(trackId);
+  }
+
+  return { pickNext, reportStarted, queueTrack, blacklistTrack };
 }

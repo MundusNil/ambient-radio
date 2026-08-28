@@ -20,6 +20,8 @@ export class RadioAudio {
   private bufferCache = new Map<string, AudioBuffer>();
   private ducking = { speechGain: 0.22, attackTauMs: 250, releaseDelayMs: 1200, releaseTauMs: 600 };
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** ER-004：曲目解码失败回调（App 层上报电台） */
+  onTrackFailed: ((trackId: string) => void) | null = null;
 
   /** 必须在用户手势中调用（浏览器自动播放策略）；「开台」按钮即手势 */
   async unlock(ducking?: {
@@ -52,8 +54,13 @@ export class RadioAudio {
     if (key === this.currentKey) return;
 
     const buffer = await this.loadBuffer(trackId).catch(() => null);
+    if (!buffer) {
+      // ER-004：解码失败（文件损坏）→ 上报电台跳过该曲
+      this.onTrackFailed?.(trackId);
+      return;
+    }
     // 加载期间被关台：丢弃
-    if (!this.ctx || !this.duckGain || !buffer) return;
+    if (!this.ctx || !this.duckGain) return;
 
     this.stopCurrent();
     const src = this.ctx.createBufferSource();

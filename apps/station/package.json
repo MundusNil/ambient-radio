@@ -5,7 +5,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc --noEmit",
     "start": "tsx src/index.ts",
-    "scan": "tsx src/scan.ts"
+    "scan": "tsx src/scan.ts",
+    "voice:compare": "tsx src/voice-compare.ts"
   },
   "dependencies": {
     "@ambient-radio/adapters": "workspace:*",

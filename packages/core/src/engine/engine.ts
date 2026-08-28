@@ -28,7 +28,7 @@ export interface EngineSnapshot {
   hostTalking: boolean;
   hostSegmentId: string | null;
   listeners: number;
-  recentTracks: Array<{ id: string; title: string; artist: string | null }>;
+  recentTracks: Array<{ id: string; title: string; artist: string | null; styles: string[] }>;
 }
 
 export interface EngineOptions {
@@ -226,6 +226,7 @@ export function createEngine(options: EngineOptions): Engine {
         id: t.id,
         title: t.title,
         artist: t.artist,
+        styles: t.styles,
       })),
     };
   }

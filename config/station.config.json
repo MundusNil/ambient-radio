@@ -27,11 +27,20 @@
       "night-quiet": 0.8
     },
     "timeOfDayBoost": {
-      "deepNight": { "night-quiet": 1.8, "vocal-soft": 1.2 },
-      "morning": { "cafe": 1.3 },
-      "afternoon": { "game-bgm": 1.2 },
+      "deepNight": {
+        "night-quiet": 1.8,
+        "vocal-soft": 1.2
+      },
+      "morning": {
+        "cafe": 1.3
+      },
+      "afternoon": {
+        "game-bgm": 1.2
+      },
       "evening": {},
-      "lateNight": { "night-quiet": 1.5 }
+      "lateNight": {
+        "night-quiet": 1.5
+      }
     },
     "recencyPenaltyHalfLifePlays": 8
   },

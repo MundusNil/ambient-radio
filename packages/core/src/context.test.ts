@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import { buildSegmentPrompt } from './context';
+import { getDayPartContext } from './time';
+
+const PERSONA = '# 梦可\n温柔、安静、细腻、克制。';
+
+const ctx = {
+  kind: 'interlude' as const,
+  persona: PERSONA,
+  stationName: '梦可电台',
+  hostName: '梦可',
+  dayPart: getDayPartContext(new Date(2026, 7, 19, 20, 0)),
+  currentTrack: { title: '月光小径', artist: null, styles: ['cafe'] },
+  recentTracks: [{ title: '晨雾', artist: null, styles: ['game-bgm'] }],
+};
+
+describe('buildSegmentPrompt', () => {
+  it('system 注入人格全文与直播规则', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.system).toContain(PERSONA);
+    expect(p.system).toContain('TTS');
+    expect(p.system).not.toContain('{PERSONA}');
+  });
+
+  it('user 含时段、正在播的曲与近期曲目（FR-036）', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.user).toContain('周三');
+    expect(p.user).toContain('《月光小径》');
+    expect(p.user).toContain('《晨雾》');
+  });
+
+  it('台呼约束明确禁止点名与「欢迎回来」（FR-005）', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
+    expect(p.user).toContain('不得点名');
+    expect(p.user).toContain('欢迎回来');
+  });
+
+  it('串场与主题有不同的长度约束（FR-032/033）', () => {
+    const interlude = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
+    const topic = buildSegmentPrompt({ ...ctx, kind: 'topic' });
+    expect(interlude.user).toContain('40~90 字');
+    expect(topic.user).toContain('200~450 字');
+  });
+
+  it('换曲间隙没有曲目信息时不出现《》', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', currentTrack: null });
+    expect(p.user).toContain('换曲的间隙');
+    expect(p.user).not.toContain('《月光小径》');
+  });
+});

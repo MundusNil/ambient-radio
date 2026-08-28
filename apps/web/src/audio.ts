@@ -13,6 +13,8 @@ export class RadioAudio {
   /** ducking 层：主播说话时压低、说完恢复（FR-043/044；参数来自 /api/config） */
   private duckGain: GainNode | null = null;
   private source: AudioBufferSourceNode | null = null;
+  /** 语音轨 source（独立于音乐轨；播完自动 unduck，FR-044） */
+  private speechSource: AudioBufferSourceNode | null = null;
   private currentKey = '';
   private volume = 0.8;
   private bufferCache = new Map<string, AudioBuffer>();
@@ -63,6 +65,48 @@ export class RadioAudio {
     src.start(this.ctx.currentTime + 0.08, offsetSec);
     this.source = src;
     this.currentKey = key;
+  }
+
+  /** 播放梦可的语音段：音乐压低，语音播完平滑恢复（FR-043/044） */
+  async playSpeech(segmentId: string): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx || !this.volumeGain) return;
+    try {
+      const res = await fetch(`/audio/segment/${segmentId}`);
+      if (!res.ok) return;
+      const raw = await res.arrayBuffer();
+      if (!this.ctx) return;
+      const buffer = await this.ctx.decodeAudioData(raw);
+      if (!this.ctx || !this.volumeGain) return;
+
+      this.stopSpeech();
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      // 语音直连总音量（不经过 duckGain——它自己是压低音乐的那一方）
+      src.connect(this.volumeGain);
+      src.onended = () => {
+        this.speechSource = null;
+        this.unduck();
+      };
+      src.start();
+      this.speechSource = src;
+      this.duck();
+    } catch {
+      // 语音加载失败：音乐照常，不中断（沉默保底哲学）
+    }
+  }
+
+  private stopSpeech(): void {
+    if (this.speechSource) {
+      try {
+        this.speechSource.onended = null;
+        this.speechSource.stop();
+      } catch {
+        // 已停止
+      }
+      this.speechSource.disconnect();
+      this.speechSource = null;
+    }
   }
 
   /** 主播开始说话：音乐平滑压低（FR-043） */

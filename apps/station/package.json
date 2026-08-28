@@ -3,8 +3,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsc --noEmit",
+    "start": "tsx src/index.ts"
   },
   "dependencies": {
     "@ambient-radio/adapters": "workspace:*",

@@ -69,6 +69,14 @@ body {
   animation: breathe 2.6s ease-in-out infinite;
 }
 
+.on-air.talking .lamp {
+  animation-duration: 0.9s;
+}
+
+.tagline.talking {
+  color: var(--accent);
+}
+
 @keyframes breathe {
   0%,
   100% {

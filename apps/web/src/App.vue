@@ -19,6 +19,8 @@ const state = ref<StationState | null>(null);
 const live = ref(false);
 const volume = ref(0.8);
 const connecting = ref(false);
+const hostTalking = ref(false);
+let hostTalkTimer: ReturnType<typeof setTimeout> | undefined;
 
 const audio = new RadioAudio();
 let ws: WsHandle | null = null;
@@ -51,8 +53,17 @@ function handleEvent(event: ServerEvent): void {
     if (live.value) {
       void audio.play(event.trackId, event.startedAt, clockOffset);
     }
+  } else if (event.type === 'voice') {
+    // 梦可开口：音乐平滑压低（ducking 在 audio.playSpeech 内完成）
+    if (live.value) {
+      void audio.playSpeech(event.segmentId);
+      hostTalking.value = true;
+      clearTimeout(hostTalkTimer);
+      hostTalkTimer = setTimeout(() => {
+        hostTalking.value = false;
+      }, event.durationMs + 200);
+    }
   }
-  // voice 事件：语音轨下一个切片接入（届时触发 audio.duck() / unduck()）
 }
 
 async function openStation(): Promise<void> {
@@ -97,12 +108,14 @@ onUnmounted(() => {
 <template>
   <main class="shell">
     <section class="panel">
-      <p class="on-air" :class="{ active: live }">
+      <p class="on-air" :class="{ active: live, talking: hostTalking }">
         <span class="lamp" aria-hidden="true" />ON AIR
       </p>
 
       <h1 class="title">{{ info?.station.name ?? '梦可电台' }}</h1>
-      <p class="tagline">音乐永远是主体，她只是偶尔轻轻开口。</p>
+      <p class="tagline" :class="{ talking: hostTalking }">
+        {{ hostTalking ? '梦可正在说话…' : '音乐永远是主体，她只是偶尔轻轻开口。' }}
+      </p>
 
       <div class="now-playing" :class="{ silent: !live || !state?.title }">
         <template v-if="live && state?.title">

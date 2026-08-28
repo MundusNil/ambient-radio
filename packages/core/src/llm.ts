@@ -3,6 +3,8 @@ import type { SegmentPrompt } from './context';
 
 export interface SegmentDraft {
   text: string;
+  /** P2 点歌：留言含点歌意图时，LLM 提取的点歌请求（受理与否由组装层匹配曲库后决定） */
+  songRequest?: { query: string } | null;
 }
 
 export interface LlmClient {

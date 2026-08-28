@@ -1,5 +1,5 @@
 /** OpenAI 兼容 LLM 客户端（D7：DeepSeek / Qwen / GLM / Kimi 通吃，换供应商=改配置） */
-import type { LlmClient, SegmentPrompt } from '@ambient-radio/core';
+import type { LlmClient, SegmentDraft, SegmentPrompt } from '@ambient-radio/core';
 
 export interface OpenAiCompatibleOptions {
   baseUrl: string;
@@ -9,6 +9,32 @@ export interface OpenAiCompatibleOptions {
   timeoutMs?: number;
   /** 网络失败时的重试次数 */
   retries?: number;
+}
+
+/** P2 点歌意图的结构化输出契约（LLM 按此格式返回 JSON） */
+interface SongRequestJson {
+  text: string;
+  songRequest?: { query: string } | null;
+}
+
+/**
+ * 解析 LLM 输出：优先 JSON（结构化点歌意图），
+ * 解析失败回退纯文本（文本即回复内容，songRequest 缺省）。
+ */
+function parseDraft(raw: string): SegmentDraft {
+  const trimmed = raw.trim();
+  try {
+    const parsed = JSON.parse(trimmed) as SongRequestJson;
+    if (typeof parsed.text === 'string' && parsed.text.trim().length > 0) {
+      return {
+        text: parsed.text.trim(),
+        songRequest: parsed.songRequest ?? null,
+      };
+    }
+  } catch {
+    // 不是 JSON：按纯文本处理
+  }
+  return { text: trimmed, songRequest: null };
 }
 
 export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): LlmClient {
@@ -28,6 +54,7 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
         messages,
         temperature,
         max_tokens: 800,
+        response_format: { type: 'json_object' },
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -44,7 +71,7 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
   }
 
   return {
-    async generateSegment(prompt: SegmentPrompt): Promise<{ text: string }> {
+    async generateSegment(prompt: SegmentPrompt): Promise<SegmentDraft> {
       const messages = [
         { role: 'system' as const, content: prompt.system },
         { role: 'user' as const, content: prompt.user },
@@ -53,7 +80,7 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
       for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
           const text = await chatOnce(messages);
-          return { text };
+          return parseDraft(text);
         } catch (err) {
           lastError = err;
           // 只有网络/5xx 类错误值得重试；4xx 不重试

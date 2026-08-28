@@ -4,6 +4,8 @@
  * 生成管线：plan-segment → 上下文构建 → LLM → TTS → onSegmentReady；
  * 任一环失败即按沉默保底（ER-001~003）静默丢弃，音乐照常。
  */
+
+import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -49,6 +51,8 @@ interface VoiceSegment {
   audioPath: string;
   durationMs: number;
   startedAt: number;
+  /** 点歌受理：request_ack 播出后要插入调度器的曲目（P2） */
+  songTrackId: string | null;
 }
 
 export interface RadioDeps {
@@ -64,6 +68,8 @@ export interface RadioDeps {
   llm: LlmClient;
   tts: TtsClient;
   store: Store;
+  /** 原始留言保留天数（FR-092：7 天） */
+  retentionDays: number;
 }
 
 export function createRadio(deps: RadioDeps) {
@@ -136,7 +142,28 @@ export function createRadio(deps: RadioDeps) {
   }
 
   /** 生成管线：plan-segment → LLM → TTS → ready；失败静默丢弃（沉默保底） */
-  async function generateSegment(plan: { id: string; kind: SegmentKind }): Promise<void> {
+  /** 点歌匹配：query 与曲库标题/风格模糊匹配，返回第一命中（P2） */
+  function matchTrack(query: string): Track | null {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    const exact = tracks.find((t) => t.title.toLowerCase() === q);
+    if (exact) return exact;
+    // token 拆分：'220暖色调' → 匹配标题含任一 token 的
+    const tokens = q.split(/[\s，,。.!！？?、/]+/).filter((s) => s.length > 0);
+    for (const token of tokens) {
+      const hit = tracks.find((t) => t.title.toLowerCase().includes(token));
+      if (hit) return hit;
+    }
+    // 风格名匹配
+    return tracks.find((t) => t.styles.some((s) => q.includes(s.toLowerCase()))) ?? null;
+  }
+
+  async function generateSegment(plan: {
+    id: string;
+    kind: SegmentKind;
+    replyTo?: Array<{ id: string; body: string }>;
+    ackTitle?: string;
+  }): Promise<void> {
     try {
       const snap = engine.getSnapshot(clock.now());
       const prompt = buildSegmentPrompt({
@@ -147,8 +174,26 @@ export function createRadio(deps: RadioDeps) {
         dayPart: getDayPartContext(new Date(clock.now())),
         currentTrack: snap.trackId ? (trackById.get(snap.trackId) ?? null) : null,
         recentTracks: snap.recentTracks,
+        replyTo: plan.replyTo,
+        ackTitle: plan.ackTitle,
       });
       const draft = await deps.llm.generateSegment(prompt);
+      // 点歌意图（FR-062）：LLM 从留言提取 query → 匹配曲库 → 受理则安排 request_ack
+      let songTrackId: string | null = null;
+      if (plan.kind === 'reply' && draft.songRequest?.query) {
+        const hit = matchTrack(draft.songRequest.query);
+        if (hit) {
+          songTrackId = hit.id;
+          engine.onRequestAck(hit.title);
+          console.log(
+            `[radio] 🎵 点歌受理：《${hit.title}》（${hit.styles.join('/')}）→ 预告后插播`,
+          );
+        } else {
+          console.log(
+            `[radio] 🎵 点歌未匹配曲库：${draft.songRequest.query}（婉拒由文案自然带出）`,
+          );
+        }
+      }
       const speech = await deps.tts.synthesize(draft.text);
       voiceSegments.set(plan.id, {
         id: plan.id,
@@ -157,6 +202,7 @@ export function createRadio(deps: RadioDeps) {
         audioPath: speech.filePath,
         durationMs: speech.durationMs,
         startedAt: 0,
+        songTrackId,
       });
       engine.onSegmentReady(plan.id, speech.durationMs);
       console.log(
@@ -178,7 +224,12 @@ export function createRadio(deps: RadioDeps) {
           break;
         }
         case 'plan-segment': {
-          void generateSegment(event);
+          void generateSegment({
+            id: event.id,
+            kind: event.kind,
+            replyTo: event.replyTo,
+            ackTitle: event.ackTitle,
+          });
           break;
         }
         case 'play-segment': {
@@ -189,17 +240,28 @@ export function createRadio(deps: RadioDeps) {
           if (airedSegments.length > AIRED_SEGMENT_LIMIT) {
             airedSegments.shift();
           }
+          // 点歌预告播出后：把受理的歌插入调度器队列（预告先于播歌，FR-064）
+          if (aired.songTrackId) {
+            scheduler.queueTrack(aired.songTrackId);
+          }
           // 节目记录（P3 记忆的基础数据；原始文案仅存库，不外泄）
-          deps.store.insertSegment({
-            id: aired.id,
-            kind: aired.kind,
-            text: aired.text,
-            audioPath: aired.audioPath,
-            durationMs: aired.durationMs,
-            plannedAt: 0,
-            airedAt: aired.startedAt,
-            status: 'aired',
-          });
+          try {
+            deps.store.insertSegment({
+              id: aired.id,
+              kind: aired.kind,
+              text: aired.text,
+              audioPath: aired.audioPath,
+              durationMs: aired.durationMs,
+              plannedAt: 0,
+              airedAt: aired.startedAt,
+              status: 'aired',
+            });
+          } catch (err) {
+            // 记录失败不影响播出（ER 哲学：绝不因内部故障打断节目）
+            console.warn(
+              `[radio] 段记录入库失败（忽略）：${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
           broadcast({
             type: 'voice',
             segmentId: event.segmentId,
@@ -253,6 +315,7 @@ export function createRadio(deps: RadioDeps) {
   });
 
   let tickTimer: ReturnType<typeof setInterval> | null = null;
+  let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   function start(): void {
     // 电台开机即开播（D5：音乐时间线永远走，调频进来时音乐已经在放）
@@ -289,10 +352,43 @@ export function createRadio(deps: RadioDeps) {
       const events = engine.tick(tickNow);
       if (events.length > 0) handleEvents(events, tickNow);
     }, 1000);
+    // 每日清理过期留言（FR-092）
+    cleanupTimer = setInterval(
+      () => {
+        const removed = deps.store.deleteExpiredMessages(clock.now());
+        if (removed > 0) console.log(`[radio] 🧹 清理过期留言 ${removed} 条`);
+      },
+      24 * 60 * 60 * 1000,
+    );
   }
 
   function stop(): void {
     if (tickTimer !== null) clearInterval(tickTimer);
+    if (cleanupTimer !== null) clearInterval(cleanupTimer);
+  }
+
+  /** 上行留言处理（P2）：入库（7 天保留）→ 引擎 SLA 队列 → 回执 */
+  function handleClientMessage(ws: WebSocket, raw: string): void {
+    try {
+      const parsed = JSON.parse(raw) as { type?: string; body?: string };
+      if (parsed.type !== 'message' || typeof parsed.body !== 'string' || !parsed.body.trim()) {
+        return;
+      }
+      const now = clock.now();
+      const id = randomUUID();
+      const retention = deps.retentionDays * 86_400_000;
+      deps.store.insertMessage({
+        id,
+        body: parsed.body.trim(),
+        receivedAt: now,
+        expiresAt: now + retention,
+      });
+      engine.onMessage({ id, body: parsed.body.trim(), receivedAt: now });
+      ws.send(JSON.stringify({ type: 'received', id }));
+      console.log(`[radio] 💌 留言（${id.slice(0, 8)}）：${parsed.body.trim().slice(0, 40)}`);
+    } catch {
+      // 无效消息忽略，事件流不断
+    }
   }
 
   function attachWs(server: ServerType): void {
@@ -311,6 +407,9 @@ export function createRadio(deps: RadioDeps) {
       engine.onListenersChanged(wss.clients.size);
       // 调频进入：立即补发当前状态
       ws.send(JSON.stringify({ type: 'sync', state: getState() }));
+      ws.on('message', (raw) => {
+        handleClientMessage(ws, raw.toString());
+      });
       ws.on('close', () => {
         engine.onListenersChanged(wss.clients.size);
       });

@@ -81,3 +81,27 @@ describe('store · segments（节目记录，P3 记忆的基础）', () => {
     expect(store.listSegments()[0]).toMatchObject({ kind: 'interlude', text: '你好' });
   });
 });
+
+describe('store · messages（P2，FR-091/092）', () => {
+  it('留言入库带过期时间，可查询活跃留言', () => {
+    const store = createStore(':memory:');
+    store.insertMessage({
+      id: 'm1',
+      body: '你好',
+      receivedAt: 1_000_000,
+      expiresAt: 1_000_000 + 7 * 86_400_000,
+    });
+    const active = store.listActiveMessages(1_500_000);
+    expect(active).toHaveLength(1);
+    expect(active[0]).toMatchObject({ body: '你好' });
+  });
+
+  it('过期留言被清理（FR-092：7 天自动删除）', () => {
+    const store = createStore(':memory:');
+    store.insertMessage({ id: 'old', body: '旧留言', receivedAt: 1_000_000, expiresAt: 2_000_000 });
+    store.insertMessage({ id: 'new', body: '新留言', receivedAt: 2_500_000, expiresAt: 9_500_000 });
+    expect(store.deleteExpiredMessages(2_100_000)).toBe(1);
+    const active = store.listActiveMessages(3_000_000);
+    expect(active.map((m) => m.id)).toEqual(['new']);
+  });
+});

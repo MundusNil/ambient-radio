@@ -1,5 +1,5 @@
-/** 前端 API/WS 客户端：调频进入（对时）、事件流、断线重连 */
-import type { ServerEvent, StationState } from '@ambient-radio/shared';
+/** 前端 API/WS 客户端：调频进入（对时）、事件流、断线重连、上行留言 */
+import type { ClientEvent, ServerEvent, StationState } from '@ambient-radio/shared';
 
 export interface StationInfo {
   station: { name: string; host: string };
@@ -32,6 +32,8 @@ export function calibrate(state: StationState): number {
 
 export interface WsHandle {
   close(): void;
+  /** 上行留言（P2） */
+  sendMessage(body: string): void;
 }
 
 /** 连接电台事件流；断线 3s 后自动重连（收音机掉线自动重新调频） */
@@ -60,6 +62,11 @@ export function connectWs(onEvent: (event: ServerEvent) => void, onOpen?: () => 
     close() {
       closed = true;
       ws?.close();
+    },
+    sendMessage(body: string) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'message', body } satisfies ClientEvent));
+      }
     },
   };
 }

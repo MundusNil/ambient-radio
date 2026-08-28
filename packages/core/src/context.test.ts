@@ -48,3 +48,28 @@ describe('buildSegmentPrompt', () => {
     expect(p.user).not.toContain('《月光小径》');
   });
 });
+
+describe('buildSegmentPrompt · P2 互动（reply / request_ack）', () => {
+  it('reply 提示词包含听众留言（合并多条，FR-054）', () => {
+    const p = buildSegmentPrompt({
+      ...ctx,
+      kind: 'reply',
+      replyTo: [
+        { id: 'm1', body: '今晚的歌好好听' },
+        { id: 'm2', body: '主播晚安' },
+      ],
+    });
+    expect(p.user).toContain('今晚的歌好好听');
+    expect(p.user).toContain('主播晚安');
+  });
+
+  it('request_ack 提示词包含被受理的曲名', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'request_ack', ackTitle: '月光小径' });
+    expect(p.user).toContain('月光小径');
+  });
+
+  it('reply 提示词明确要求不点名（FR-005 延伸）', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'reply', replyTo: [{ id: 'm1', body: '嗨' }] });
+    expect(p.user).toContain('泛称');
+  });
+});

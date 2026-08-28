@@ -186,3 +186,148 @@ describe('engine · 串场节奏（FR-031）', () => {
     expect(again[0]).toMatchObject({ type: 'plan-segment', kind: 'interlude' });
   });
 });
+
+describe('engine · 留言 SLA（P2，FR-055/056）', () => {
+  const msgCfg = {
+    ...DEFAULT_ENGINE_CONFIG,
+    talkIntervalMs: [300_000, 300_000] as [number, number],
+    topicChance: 0,
+    speakWhenAlone: true,
+  };
+
+  it('留言 45 秒内不回应；到期后在自然节点优先规划 reply', () => {
+    const e = createEngine({ config: msgCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onMessage({ id: 'm1', body: '今晚的歌好听', receivedAt: 100_000 });
+    expect(e.tick(144_999)).toEqual([]); // 45s 内
+    const events = e.tick(145_000); // due = 100 + 45 = 145s
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
+  });
+
+  it('reply 段落携带留言内容（replyTo 合并多条，FR-054）', () => {
+    const e = createEngine({ config: msgCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onMessage({ id: 'm1', body: '第一条', receivedAt: 100_000 });
+    e.onMessage({ id: 'm2', body: '第二条', receivedAt: 101_000 });
+    const events = e.tick(146_000);
+    expect(events[0]).toMatchObject({
+      type: 'plan-segment',
+      kind: 'reply',
+      replyTo: [
+        { id: 'm1', body: '第一条' },
+        { id: 'm2', body: '第二条' },
+      ],
+    });
+  });
+
+  it('reply 生成失败后留言保留在队列，SLA 到期自动重试', () => {
+    const e = createEngine({ config: msgCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onMessage({ id: 'm1', body: '第一条', receivedAt: 100_000 });
+    const [plan] = e.tick(145_000);
+    if (plan?.type !== 'plan-segment') throw new Error('expect plan');
+    e.onSegmentFailed(plan.id);
+    // 失败后 pending 已清，due 仍过期：立即重试同一批留言（留言没丢）
+    const retry = e.tick(146_000);
+    expect(retry).toHaveLength(1);
+    expect(retry[0]).toMatchObject({
+      type: 'plan-segment',
+      kind: 'reply',
+      replyTo: [{ id: 'm1', body: '第一条' }],
+    });
+  });
+
+  it('force 到期后放宽节点尽快回应（尾奏保护让位，前奏保护保留）', () => {
+    // 长间隔配置：next_talk_due 远在 900s，不会与留言 SLA 抢
+    const forceCfg = {
+      ...DEFAULT_ENGINE_CONFIG,
+      talkIntervalMs: [900_000, 900_000] as [number, number],
+      topicChance: 0,
+      speakWhenAlone: true,
+    };
+    const e = createEngine({ config: forceCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 300_000), 0);
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 230_000 });
+    // 295s：due 已过但距曲尾 <10s（非自然节点），不 plan
+    expect(e.tick(295_000)).toEqual([]);
+    // 300s：曲目结束 → 组装层换新歌
+    const ended = e.tick(300_000);
+    expect(ended[0]?.type).toBe('track-ended');
+    e.onTrackStarted(T('b', 300_000), 300_000);
+    // 305s：新歌前奏期（elapsed 5s < 20s），即使 force 也不打断（前奏保护保留）
+    expect(e.tick(305_000)).toEqual([]);
+    // 320s：force 到期（230+90），新歌已过前奏，放宽节点立即 plan
+    const events = e.tick(320_000);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
+  });
+
+  it('pending 存在时不重复规划（防止同批留言双发）', () => {
+    const e = createEngine({ config: msgCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 100_000 });
+    e.tick(145_000); // plan reply
+    expect(e.tick(200_000)).toEqual([]); // 不重复 plan
+  });
+});
+
+describe('engine · 点歌受理（P2，FR-064/066）', () => {
+  const ackCfg = {
+    ...DEFAULT_ENGINE_CONFIG,
+    talkIntervalMs: [300_000, 300_000] as [number, number],
+    topicChance: 0,
+    speakWhenAlone: true,
+  };
+
+  it('onRequestAck 后在自然节点优先规划 request_ack（预告先于播歌）', () => {
+    const e = createEngine({ config: ackCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onRequestAck('月光小径');
+    const events = e.tick(30_000); // 曲目进行 30s ≥ 20s，自然节点
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'plan-segment',
+      kind: 'request_ack',
+      ackTitle: '月光小径',
+    });
+  });
+
+  it('request_ack 播出后 ack 状态清除（不会重复预告）', () => {
+    const e = createEngine({ config: ackCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onRequestAck('月光小径');
+    const [plan] = e.tick(30_000);
+    if (plan?.type !== 'plan-segment') throw new Error('expect plan');
+    e.onSegmentReady(plan.id, 8_000);
+    const play = e.tick(31_000);
+    expect(play).toHaveLength(1);
+    // ack 已消费：下一 tick 不再规划 request_ack
+    expect(e.tick(32_000)).toEqual([]);
+  });
+});
+
+describe('engine · 留言 SLA 不受 minTalkGap 约束（P2 回归）', () => {
+  it('刚播完段落（gap 期内）收到留言，SLA 到期后仍能回应', () => {
+    const gapCfg = {
+      ...DEFAULT_ENGINE_CONFIG,
+      talkIntervalMs: [300_000, 300_000] as [number, number],
+      topicChance: 0,
+      speakWhenAlone: true,
+      minTalkGapMs: 90_000,
+    };
+    const e = createEngine({ config: gapCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    // 先播一段 interlude（300s plan → 301s play → 316s 结束）
+    const [plan] = e.tick(300_000);
+    if (plan?.type !== 'plan-segment') throw new Error('expect plan');
+    e.onSegmentReady(plan.id, 15_000);
+    e.tick(301_000);
+    // gap 期内（316s + 90s = 406s 前）收到留言
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 320_000 });
+    // 365s：留言 due（320+45），处于 gap 期但应能 plan reply
+    const events = e.tick(365_000);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
+  });
+});

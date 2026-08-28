@@ -21,6 +21,10 @@ const volume = ref(0.8);
 const connecting = ref(false);
 const hostTalking = ref(false);
 let hostTalkTimer: ReturnType<typeof setTimeout> | undefined;
+// P2 留言（FR-052：本次收听窗口内保留自己发送的留言；关台即清 FR-057）
+const messages = ref<Array<{ id: string; body: string }>>([]);
+const draft = ref('');
+const sending = ref(false);
 
 const audio = new RadioAudio();
 let ws: WsHandle | null = null;
@@ -63,6 +67,10 @@ function handleEvent(event: ServerEvent): void {
         hostTalking.value = false;
       }, event.durationMs + 200);
     }
+  } else if (event.type === 'received') {
+    // 回执：把 pending 标记替换为服务器 id（保持不变性）
+    const pending = messages.value.find((m) => m.id.startsWith('pending-'));
+    if (pending) pending.id = event.id;
   }
 }
 
@@ -86,6 +94,16 @@ function closeStation(): void {
   ws?.close();
   ws = null;
   audio.suspend();
+  messages.value = []; // FR-057：关台后上一轮留言不再显示
+}
+
+function sendMessage(): void {
+  const body = draft.value.trim();
+  if (!body || !ws) return;
+  ws.sendMessage(body);
+  // 本地乐观记录（FR-052）；回执由 received 事件确认去重
+  messages.value.push({ id: `pending-${Date.now()}`, body });
+  draft.value = '';
 }
 
 watch(volume, (v) => audio.setVolume(v));
@@ -144,6 +162,28 @@ onUnmounted(() => {
       <div class="volume">
         <label for="vol">音量</label>
         <input id="vol" v-model.number="volume" type="range" min="0" max="1" step="0.01" />
+      </div>
+
+      <div v-if="live" class="chat">
+        <div class="chat-list" :class="{ empty: messages.length === 0 }">
+          <template v-if="messages.length > 0">
+            <p v-for="m in messages" :key="m.id" class="chat-item">{{ m.body }}</p>
+          </template>
+          <template v-else>
+            <p class="chat-hint">梦可会在这个频率上读到你的留言。</p>
+          </template>
+        </div>
+        <form class="chat-form" @submit.prevent="sendMessage">
+          <input
+            v-model="draft"
+            class="chat-input"
+            type="text"
+            maxlength="200"
+            placeholder="说点什么…"
+            autocomplete="off"
+          />
+          <button class="chat-send" type="submit" :disabled="sending || !draft.trim()">发送</button>
+        </form>
       </div>
     </section>
   </main>

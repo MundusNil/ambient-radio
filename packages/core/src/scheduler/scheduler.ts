@@ -25,6 +25,8 @@ export interface SchedulerOptions {
 export interface Scheduler {
   pickNext(now: number): SchedulerDecision;
   reportStarted(trackId: string, at: number): void;
+  /** 点歌队列（P2，FR-064）：受理的点歌优先播出；没有「点歌模式」概念（FR-066） */
+  queueTrack(trackId: string): void;
 }
 
 export function createScheduler(options: SchedulerOptions): Scheduler {
@@ -35,6 +37,8 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
   const lastStartedAt = new Map<string, number>();
   /** 有序播放日志（recency 软惩罚计数用），仅保留近 2 小时 */
   const playLog: Array<{ trackId: string; at: number }> = [];
+  /** 点歌队列（P2）：先进先出，播完即消费 */
+  const requestQueue: string[] = [];
 
   function pruneLog(now: number): void {
     const cutoff = now - 2 * 60 * 60 * 1000;
@@ -70,6 +74,14 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     if (enabled.length === 0) {
       throw new Error('曲库为空或全部禁用：无法选曲（ER-005 由组装层兜底）');
     }
+    // 点歌队列优先（FR-064）：听众明确要求，跳过随机权重与滑窗（不标记放宽）
+    const requested = requestQueue.shift();
+    if (requested) {
+      const track = enabled.find((t) => t.id === requested);
+      if (track) {
+        return { track, relaxedNoRepeat: false };
+      }
+    }
     const inWindow = new Set(
       [...lastStartedAt.entries()]
         .filter(([, at]) => now - at < config.noRepeatWindowMs)
@@ -103,5 +115,9 @@ export function createScheduler(options: SchedulerOptions): Scheduler {
     pruneLog(at);
   }
 
-  return { pickNext, reportStarted };
+  function queueTrack(trackId: string): void {
+    requestQueue.push(trackId);
+  }
+
+  return { pickNext, reportStarted, queueTrack };
 }

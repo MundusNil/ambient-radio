@@ -72,6 +72,7 @@ async function main(): Promise<void> {
       loudnorm: config.tts.postProcess === 'loudnorm',
     }),
     store,
+    retentionDays: config.messages.retentionDays,
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

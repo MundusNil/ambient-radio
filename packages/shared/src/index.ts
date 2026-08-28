@@ -19,7 +19,8 @@ export interface StationState {
 export type ServerEvent =
   | { type: 'track'; trackId: string; title: string; startedAt: number; durationMs: number }
   | { type: 'voice'; segmentId: string; startedAt: number; durationMs: number }
-  | { type: 'sync'; state: StationState };
+  | { type: 'sync'; state: StationState }
+  | { type: 'received'; id: string };
 
 /** WS 上行事件 */
 export type ClientEvent = { type: 'message'; body: string };

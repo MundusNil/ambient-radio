@@ -20,6 +20,13 @@ export interface RecentPlay {
   startedAt: number;
 }
 
+export interface StoredMessage {
+  id: string;
+  body: string;
+  receivedAt: number;
+  expiresAt: number;
+}
+
 export interface Store {
   upsertTracks(tracks: Track[]): void;
   listTracks(): Track[];
@@ -29,6 +36,11 @@ export interface Store {
   listRecentPlays(sinceMs: number): RecentPlay[];
   insertSegment(segment: Segment): void;
   listSegments(): Segment[];
+  /** 原始留言入库（FR-091：后台短期保留，7 天后自动删除 FR-092） */
+  insertMessage(message: StoredMessage): void;
+  listActiveMessages(now: number): StoredMessage[];
+  /** 删除过期留言；返回删除条数 */
+  deleteExpiredMessages(now: number): number;
 }
 
 const SCHEMA = `
@@ -207,6 +219,29 @@ export function createStore(dbPath: string): Store {
         airedAt: r.aired_at,
         status: r.status,
       }));
+    },
+
+    insertMessage(message: StoredMessage): void {
+      db.prepare(
+        'INSERT INTO messages (id, body, received_at, expires_at) VALUES (?, ?, ?, ?)',
+      ).run(message.id, message.body, message.receivedAt, message.expiresAt);
+    },
+
+    listActiveMessages(now: number): StoredMessage[] {
+      const rows = db
+        .prepare('SELECT * FROM messages WHERE expires_at > ? ORDER BY received_at')
+        .all(now) as Array<{ id: string; body: string; received_at: number; expires_at: number }>;
+      return rows.map((r) => ({
+        id: r.id,
+        body: r.body,
+        receivedAt: r.received_at,
+        expiresAt: r.expires_at,
+      }));
+    },
+
+    deleteExpiredMessages(now: number): number {
+      const result = db.prepare('DELETE FROM messages WHERE expires_at <= ?').run(now);
+      return result.changes;
     },
   };
 }

@@ -15,7 +15,15 @@ export type EngineEvent =
   /** 当前曲目播完（组装层：选下一首并回填 onTrackStarted） */
   | { type: 'track-ended'; trackId: string }
   /** 规划一个段落（组装层：上下文构建 → LLM → TTS → onSegmentReady/onSegmentFailed） */
-  | { type: 'plan-segment'; id: string; kind: SegmentKind }
+  | {
+      type: 'plan-segment';
+      id: string;
+      kind: SegmentKind;
+      /** kind=reply 时：本次要回应的留言（合并多条，FR-054） */
+      replyTo?: Array<{ id: string; body: string }>;
+      /** kind=request_ack 时：被受理点歌的曲名 */
+      ackTitle?: string;
+    }
   /** 在自然节点播出已就绪的段落（组装层：广播 voice + 播放音频） */
   | { type: 'play-segment'; segmentId: string; startedAt: number; durationMs: number };
 
@@ -37,6 +45,12 @@ export interface EngineOptions {
   rng: () => number;
 }
 
+export interface ListenerMessageIn {
+  id: string;
+  body: string;
+  receivedAt: number;
+}
+
 export interface Engine {
   /** 每秒调用；返回本 tick 的意图事件（幂等：状态转换的那一 tick 才发） */
   tick(now: number): EngineEvent[];
@@ -44,6 +58,10 @@ export interface Engine {
   onSegmentReady(id: string, durationMs: number): void;
   onSegmentFailed(id: string): void;
   onListenersChanged(count: number): void;
+  /** 收到一条听众留言（P2：进入 SLA 回应队列） */
+  onMessage(message: ListenerMessageIn): void;
+  /** 受理了点歌：安排一次 request_ack 预告（P2） */
+  onRequestAck(title: string): void;
   /** /api/state 与上下文构建共用的时间线快照 */
   getSnapshot(now: number): EngineSnapshot;
 }
@@ -54,6 +72,8 @@ interface PendingSegment {
   state: 'planned' | 'ready';
   durationMs: number | null;
   plannedAt: number;
+  /** kind=reply：本次回应消耗的留言 id（play 时出队） */
+  replyToIds?: string[];
 }
 
 interface VoiceState {
@@ -79,6 +99,10 @@ export function createEngine(options: EngineOptions): Engine {
   let stationIdDue = false;
   let seq = 0;
   const recentTracks: Track[] = [];
+  /** P2：待回应留言（按到达顺序；SLA 45s 优先 / 90s force） */
+  const replyQueue: Array<{ id: string; body: string; receivedAt: number }> = [];
+  /** P2：待播的点歌预告（一次一条） */
+  let ackTitle: string | null = null;
 
   function sampleInterval(): number {
     const [min, max] = config.talkIntervalMs;
@@ -86,11 +110,13 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   /** 自然节点：曲目中段（前奏与尾奏保护，绝不打断一首歌的开头） */
-  function atNaturalNode(now: number): boolean {
+  function atNaturalNode(now: number, forced = false): boolean {
     if (!currentTrack) return false;
     const elapsed = now - trackStartedAt;
     const { minIntoTrackMs, minBeforeTrackEndMs } = config.nodeWindow;
-    return elapsed >= minIntoTrackMs && elapsed <= currentTrack.durationMs - minBeforeTrackEndMs;
+    if (elapsed < minIntoTrackMs) return false;
+    if (forced) return true; // force：尾奏保护让位，前奏保护保留
+    return elapsed <= currentTrack.durationMs - minBeforeTrackEndMs;
   }
 
   function shouldSpeak(): boolean {
@@ -126,12 +152,69 @@ export function createEngine(options: EngineOptions): Engine {
       pending = null;
     }
 
-    // 规划：台呼优先，其次 next_talk_due
-    const gapOk = lastSegmentEndedAt === null || now >= lastSegmentEndedAt + config.minTalkGapMs;
+    // 规划：优先级——request_ack > 留言 force > 留言 prefer > 台呼 > next_talk_due
+    // minTalkGap 只约束主动串场；留言/点歌是 SLA 驱动，不受间隔限制
+    const oldest = replyQueue[0];
+    const hasPendingReply = oldest !== undefined;
+    const gapOk =
+      lastSegmentEndedAt === null ||
+      now >= lastSegmentEndedAt + config.minTalkGapMs ||
+      ackTitle !== null ||
+      hasPendingReply;
     if (!pending && shouldSpeak() && gapOk) {
-      if (stationIdDue && atNaturalNode(now)) {
+      const replyDue = hasPendingReply && now >= oldest.receivedAt + config.preferReplyMs;
+      const replyForced = hasPendingReply && now >= oldest.receivedAt + config.forceReplyMs;
+
+      if (ackTitle !== null && atNaturalNode(now)) {
+        const title = ackTitle;
+        ackTitle = null;
         pending = {
-          id: `seg-${++seq}`,
+          id: `seg-${now}-${++seq}`,
+          kind: 'request_ack',
+          state: 'planned',
+          durationMs: null,
+          plannedAt: now,
+        };
+        nextTalkDue = now + sampleInterval();
+        events.push({ type: 'plan-segment', id: pending.id, kind: 'request_ack', ackTitle: title });
+      } else if (replyForced) {
+        // 不 splice：留言留在队列，play 时才出队（生成失败自动留队重试）
+        const batch = replyQueue.slice(0, 3); // 合并最多 3 条（FR-054）
+        pending = {
+          id: `seg-${now}-${++seq}`,
+          kind: 'reply',
+          state: 'planned',
+          durationMs: null,
+          plannedAt: now,
+          replyToIds: batch.map((m) => m.id),
+        };
+        nextTalkDue = now + sampleInterval();
+        events.push({
+          type: 'plan-segment',
+          id: pending.id,
+          kind: 'reply',
+          replyTo: batch.map((m) => ({ id: m.id, body: m.body })),
+        });
+      } else if (replyDue && atNaturalNode(now)) {
+        const batch = replyQueue.slice(0, 3);
+        pending = {
+          id: `seg-${now}-${++seq}`,
+          kind: 'reply',
+          state: 'planned',
+          durationMs: null,
+          plannedAt: now,
+          replyToIds: batch.map((m) => m.id),
+        };
+        nextTalkDue = now + sampleInterval();
+        events.push({
+          type: 'plan-segment',
+          id: pending.id,
+          kind: 'reply',
+          replyTo: batch.map((m) => ({ id: m.id, body: m.body })),
+        });
+      } else if (stationIdDue && atNaturalNode(now)) {
+        pending = {
+          id: `seg-${now}-${++seq}`,
           kind: 'station_id',
           state: 'planned',
           durationMs: null,
@@ -146,7 +229,7 @@ export function createEngine(options: EngineOptions): Engine {
           topicEligible && rng() < config.topicChance ? 'topic' : 'interlude';
         if (kind === 'topic') lastTopicAt = now;
         pending = {
-          id: `seg-${++seq}`,
+          id: `seg-${now}-${++seq}`,
           kind,
           state: 'planned',
           durationMs: null,
@@ -164,6 +247,14 @@ export function createEngine(options: EngineOptions): Engine {
       pending.durationMs !== null &&
       (atNaturalNode(now) || trackEndedThisTick)
     ) {
+      // reply 播出：本次回应的留言正式出队（FR-051 连续留言按批处理）
+      if (pending.replyToIds && pending.replyToIds.length > 0) {
+        const consumed = new Set(pending.replyToIds);
+        for (let i = replyQueue.length - 1; i >= 0; i -= 1) {
+          const msg = replyQueue[i];
+          if (msg && consumed.has(msg.id)) replyQueue.splice(i, 1);
+        }
+      }
       voice = {
         segmentId: pending.id,
         startedAt: now,
@@ -197,10 +288,19 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function onSegmentFailed(id: string): void {
-    // ER 哲学：本段放弃，音乐照常，主播沉默（组装层自己知道失败）
+    // ER 哲学：本段放弃，音乐照常，主播沉默（组装层自己知道失败）。
+    // reply 段失败：留言仍在队列，SLA 到期后自然重试。
     if (pending && pending.id === id) {
       pending = null;
     }
+  }
+
+  function onMessage(message: ListenerMessageIn): void {
+    replyQueue.push(message);
+  }
+
+  function onRequestAck(title: string): void {
+    ackTitle = title;
   }
 
   function onListenersChanged(count: number): void {
@@ -237,6 +337,8 @@ export function createEngine(options: EngineOptions): Engine {
     onSegmentReady,
     onSegmentFailed,
     onListenersChanged,
+    onMessage,
+    onRequestAck,
     getSnapshot,
   };
 }

@@ -18,6 +18,10 @@ export interface EngineConfig {
   talkIntervalMs: [number, number];
   /** 相邻两段之间的最小间隔（保护性下限） */
   minTalkGapMs: number;
+  /** FR-055：留言 prefer 时限——到期后在自然节点优先回应 */
+  preferReplyMs: number;
+  /** FR-055/ER-007：留言 force 时限——到期后放宽节点尽快回应（故障期由组装层暂停） */
+  forceReplyMs: number;
   /** FR-033：小主题冷却 */
   topicCooldownMs: number;
   /** 冷却结束后，本次串场升级为小主题的概率 */
@@ -55,6 +59,8 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   talkIntervalMs: [5 * 60 * 1000, 8 * 60 * 1000],
   minTalkGapMs: 90 * 1000,
+  preferReplyMs: 45 * 1000,
+  forceReplyMs: 90 * 1000,
   topicCooldownMs: 40 * 60 * 1000,
   topicChance: 0.15,
   nodeWindow: {

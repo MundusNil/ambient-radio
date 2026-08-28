@@ -21,6 +21,10 @@ export interface SegmentPromptContext {
   dayPart: DayPartContext;
   currentTrack: TrackBrief | null;
   recentTracks: TrackBrief[];
+  /** kind=reply：本次要回应的留言（合并多条，FR-054） */
+  replyTo?: Array<{ id: string; body: string }>;
+  /** kind=request_ack：被受理点歌的曲名 */
+  ackTitle?: string;
 }
 
 export interface SegmentPrompt {
@@ -46,8 +50,11 @@ const SYSTEM_RULES = `你是一台 AI 氛围电台的主播，正在进行直播
 </persona>
 
 【直播输出规则】
-- 你输出的内容会被 TTS 转成语音直接播出。只输出要说的内容本身：不要前缀、标题、引号、括号注释、舞台指示或任何解释。
-- 普通话口语，语速舒缓，句子偏短，善用标点制造停顿。
+- 你输出的内容会被 TTS 转成语音直接播出。
+- 输出格式：严格的 JSON，只有两个字段：
+  {"text": "你要说的话", "songRequest": null}
+  - text：要播报的正文。不要任何前缀、标题、引号、舞台指示或解释；普通话口语，语速舒缓，句子偏短，善用标点制造停顿。
+  - songRequest：仅当听众留言明显在点歌时，填 {"query": "歌名或风格描述"}；否则固定为 null。
 - 音乐是节目主体，你只是轻轻开口的主持，不抢戏。
 - 只谈论上下文里真实存在的过去；不确定的歌曲背景、作者经历或现实事件，宁可不提。
 - 不编造任何没有发生过的节目事件或与听众的共同经历。`;
@@ -71,6 +78,13 @@ export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
       .map((t) => `《${t.title}》`)
       .join('');
     lines.push(`这之前播过${recent}。`);
+  }
+  if (ctx.replyTo && ctx.replyTo.length > 0) {
+    const quoted = ctx.replyTo.map((m) => `「${m.body}」`).join('、');
+    lines.push(`收音机前的听众留下了留言：${quoted}`);
+  }
+  if (ctx.ackTitle) {
+    lines.push(`听众点了一首歌：《${ctx.ackTitle}》已受理，即将安排播出。`);
   }
   lines.push('');
   lines.push(`请播一段「${ctx.hostName}的${ctx.stationName}」节目内容——${KIND_BRIEF[ctx.kind]}`);

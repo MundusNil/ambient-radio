@@ -132,3 +132,39 @@ describe('scheduler · 防重复（FR-018）', () => {
     expect(decision.relaxedNoRepeat).toBe(true);
   });
 });
+
+describe('scheduler · 点歌队列（P2，FR-064）', () => {
+  it('受理的点歌优先于随机选曲，且不参与权重', () => {
+    const s = createScheduler({
+      tracks: [T('a', ['cafe']), T('b', ['cafe'])],
+      config: DEFAULT_SCHEDULER_CONFIG,
+      rng: fixed(0.5),
+    });
+    s.queueTrack('b');
+    expect(s.pickNext(0).track.id).toBe('b');
+  });
+
+  it('队列消耗后恢复随机选曲', () => {
+    const s = createScheduler({
+      tracks: [T('a', ['cafe']), T('b', ['cafe'])],
+      config: DEFAULT_SCHEDULER_CONFIG,
+      rng: fixed(0.5),
+    });
+    s.queueTrack('b');
+    s.pickNext(0); // 消耗 b
+    const next = s.pickNext(1_000);
+    expect(next.track.id).toBe('a'); // 恢复随机（滑窗外）
+  });
+
+  it('队列按到达顺序先进先出', () => {
+    const s = createScheduler({
+      tracks: [T('a', ['cafe']), T('b', ['cafe']), T('c', ['cafe'])],
+      config: DEFAULT_SCHEDULER_CONFIG,
+      rng: fixed(0.5),
+    });
+    s.queueTrack('c');
+    s.queueTrack('a');
+    expect(s.pickNext(0).track.id).toBe('c');
+    expect(s.pickNext(1_000).track.id).toBe('a');
+  });
+});

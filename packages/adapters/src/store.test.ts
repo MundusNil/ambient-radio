@@ -105,3 +105,41 @@ describe('store · messages（P2，FR-091/092）', () => {
     expect(active.map((m) => m.id)).toEqual(['new']);
   });
 });
+
+describe('store · memories（P3，L1 节目记忆）', () => {
+  it('写入、列出、删除', () => {
+    const store = createStore(':memory:');
+    store.insertMemories([
+      {
+        id: 'mem-1',
+        kind: 'topic',
+        text: '听众喜欢暖色调',
+        importance: 0.7,
+        createdAt: 1_000_000,
+        lastUsedAt: null,
+        status: 'active',
+      },
+    ]);
+    expect(store.listMemories()).toHaveLength(1);
+    store.deleteMemory('mem-1');
+    expect(store.listMemories()).toHaveLength(0);
+  });
+
+  it('更新最近引用时间（检索加权）', () => {
+    const store = createStore(':memory:');
+    store.insertMemories([
+      {
+        id: 'mem-1',
+        kind: 'meme',
+        text: '内部梗',
+        importance: 0.5,
+        createdAt: 1_000_000,
+        lastUsedAt: null,
+        status: 'active',
+      },
+    ]);
+    store.touchMemory('mem-1', 2_000_000);
+    const memories = store.listMemories();
+    expect(memories[0]?.lastUsedAt).toBe(2_000_000);
+  });
+});

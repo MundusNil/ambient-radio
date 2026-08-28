@@ -73,3 +73,24 @@ describe('buildSegmentPrompt · P2 互动（reply / request_ack）', () => {
     expect(p.user).toContain('泛称');
   });
 });
+
+describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
+  it('L1 记忆进入提示词，标注只可引用真实发生过的事（FR-074）', () => {
+    const p = buildSegmentPrompt({
+      ...ctx,
+      kind: 'interlude',
+      memories: [
+        { kind: 'promise', text: '答应过听众下次放一首安静的歌', importance: 0.8 },
+        { kind: 'meme', text: '「暖色调」成了节目内部梗', importance: 0.6 },
+      ],
+    });
+    expect(p.user).toContain('答应过听众下次放一首安静的歌');
+    expect(p.user).toContain('「暖色调」成了节目内部梗');
+    expect(p.user).toContain('只可引用这些真实发生过的事');
+  });
+
+  it('没有记忆时不出现记忆段落', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
+    expect(p.user).not.toContain('你记得的节目历史');
+  });
+});

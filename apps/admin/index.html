@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>梦可电台 · 维护者审查台</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 32px 24px 64px;
+        background: #0b0d15; color: #e9e4d8;
+        font-family: 'Noto Serif SC', 'Source Han Serif SC', 'STSong', serif;
+      }
+      h1 { font-size: 20px; font-weight: 300; letter-spacing: 0.15em; }
+      h2 { font-size: 14px; font-weight: 400; color: #a8a294; margin-top: 40px; letter-spacing: 0.12em; }
+      .muted { color: #5d5a4f; font-size: 12px; }
+      .card {
+        background: rgb(233 228 216 / 3%);
+        border: 1px solid rgb(233 228 216 / 10%);
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin: 10px 0;
+        display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+      }
+      .card .body { flex: 1; }
+      .card .text { font-size: 14px; line-height: 1.7; }
+      .card .meta { font-size: 11px; color: #5d5a4f; margin-top: 6px; letter-spacing: 0.05em; }
+      .kind { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-right: 8px; letter-spacing: 0.1em; }
+      .kind.topic { background: rgb(201 168 106 / 15%); color: #c9a86a; }
+      .kind.promise { background: rgb(94 129 172 / 20%); color: #5e81ac; }
+      .kind.meme { background: rgb(143 188 143 / 15%); color: #8fbc8f; }
+      .kind.event { background: rgb(229 72 77 / 12%); color: #e5484d; }
+      button {
+        font-family: inherit; font-size: 12px; color: #a8a294;
+        background: rgb(233 228 216 / 3%);
+        border: 1px solid rgb(233 228 216 / 14%);
+        border-radius: 6px; padding: 6px 12px; cursor: pointer;
+      }
+      button:hover { border-color: #e5484d; color: #e5484d; }
+      .empty { color: #5d5a4f; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>梦可电台 · 维护者审查台</h1>
+    <p class="muted">L1 节目记忆（她记得的事）与 7 天内原始留言。记忆有误就删——你是她的制作人。</p>
+
+    <h2>L1 节目记忆</h2>
+    <div id="memories"><p class="empty">加载中…</p></div>
+
+    <h2>原始留言（7 天保留，到期自动清除）</h2>
+    <div id="messages"><p class="empty">加载中…</p></div>
+
+    <script>
+      const kindLabel = { topic: '话题', promise: '承诺', meme: '内部梗', event: '事件' };
+      const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+      async function loadMemories() {
+        const box = document.getElementById('memories');
+        try {
+          const res = await fetch('/api/admin/memories');
+          const list = await res.json();
+          if (list.length === 0) { box.innerHTML = '<p class="empty">还没有记忆——她会在播出后慢慢长出节目历史。</p>'; return; }
+          box.innerHTML = list.map((m) => `
+            <div class="card">
+              <div class="body">
+                <div><span class="kind ${m.kind}">${kindLabel[m.kind] ?? m.kind}</span><span class="muted">重要度 ${m.importance.toFixed(1)}</span></div>
+                <div class="text">${esc(m.text)}</div>
+                <div class="meta">${new Date(m.createdAt).toLocaleString()}</div>
+              </div>
+              <button onclick="deleteMemory('${m.id}')">删除</button>
+            </div>`).join('');
+        } catch (e) { box.innerHTML = `<p class="empty">加载失败：${esc(e.message)}</p>`; }
+      }
+
+      // biome-ignore lint/correctness/noUnusedVariables: 被模板 inline onclick 引用
+      async function deleteMemory(id) {
+        if (!confirm('删除这条记忆？')) return;
+        await fetch(`/api/admin/memories/${id}`, { method: 'DELETE' });
+        loadMemories();
+      }
+
+      async function loadMessages() {
+        const box = document.getElementById('messages');
+        try {
+          const res = await fetch('/api/admin/messages');
+          const list = await res.json();
+          if (list.length === 0) { box.innerHTML = '<p class="empty">暂无留言。</p>'; return; }
+          box.innerHTML = list.map((m) => `
+            <div class="card">
+              <div class="body">
+                <div class="text">${esc(m.body)}</div>
+                <div class="meta">${new Date(m.receivedAt).toLocaleString()} · 到期 ${new Date(m.expiresAt).toLocaleString()}</div>
+              </div>
+            </div>`).join('');
+        } catch (e) { box.innerHTML = `<p class="empty">加载失败：${esc(e.message)}</p>`; }
+      }
+
+      loadMemories();
+      loadMessages();
+      setInterval(() => { loadMemories(); loadMessages(); }, 15000);
+    </script>
+  </body>
+</html>

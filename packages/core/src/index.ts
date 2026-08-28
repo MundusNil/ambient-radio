@@ -2,6 +2,7 @@ export * from './config';
 export * from './context';
 export * from './engine/engine';
 export * from './llm';
+export * from './memory';
 export * from './scheduler/scheduler';
 export * from './time';
 export * from './tts';

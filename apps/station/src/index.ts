@@ -73,6 +73,7 @@ async function main(): Promise<void> {
     }),
     store,
     retentionDays: config.messages.retentionDays,
+    memoryConfig: config.memory,
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

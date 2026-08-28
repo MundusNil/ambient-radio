@@ -6,15 +6,17 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
 import type { Clock, Store } from '@ambient-radio/adapters';
 import type {
   EngineConfig,
   EngineEvent,
   LlmClient,
+  MemoryConfig,
   SchedulerConfig,
   SegmentKind,
   Track,
@@ -25,6 +27,7 @@ import {
   createEngine,
   createScheduler,
   getDayPartContext,
+  selectTopMemories,
 } from '@ambient-radio/core';
 import type { ServerEvent, StationState } from '@ambient-radio/shared';
 import type { ServerType } from '@hono/node-server';
@@ -55,6 +58,17 @@ interface VoiceSegment {
   songTrackId: string | null;
 }
 
+/** 维护者审查台页面（apps/admin/index.html） */
+const adminHtmlPath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+  'apps',
+  'admin',
+  'index.html',
+);
+
 export interface RadioDeps {
   stationName: string;
   hostName: string;
@@ -70,6 +84,8 @@ export interface RadioDeps {
   store: Store;
   /** 原始留言保留天数（FR-092：7 天） */
   retentionDays: number;
+  /** L1 记忆检索配置（P3） */
+  memoryConfig: MemoryConfig;
 }
 
 export function createRadio(deps: RadioDeps) {
@@ -166,6 +182,8 @@ export function createRadio(deps: RadioDeps) {
   }): Promise<void> {
     try {
       const snap = engine.getSnapshot(clock.now());
+      // L1 记忆检索（P3，FR-071/072）：把最值得延续的节目历史带进 prompt
+      const memories = selectTopMemories(deps.store.listMemories(), clock.now(), deps.memoryConfig);
       const prompt = buildSegmentPrompt({
         kind: plan.kind,
         persona: deps.persona,
@@ -176,6 +194,11 @@ export function createRadio(deps: RadioDeps) {
         recentTracks: snap.recentTracks,
         replyTo: plan.replyTo,
         ackTitle: plan.ackTitle,
+        memories: memories.map((m) => ({
+          kind: m.kind,
+          text: m.text,
+          importance: m.importance,
+        })),
       });
       const draft = await deps.llm.generateSegment(prompt);
       // 点歌意图（FR-062）：LLM 从留言提取 query → 匹配曲库 → 受理则安排 request_ack
@@ -213,6 +236,33 @@ export function createRadio(deps: RadioDeps) {
         `[radio] 段落生成失败（沉默保底，ER-001~003）：${err instanceof Error ? err.message : String(err)}`,
       );
       engine.onSegmentFailed(plan.id);
+    }
+  }
+
+  /** L1 记忆策展（P3）：LLM 判断是否值得记 + 匿名化 → 入库。失败静默（宁可漏记不可乱记） */
+  async function extractAndStoreMemories(seg: VoiceSegment): Promise<void> {
+    try {
+      const extracted = await deps.llm.extractMemories(seg.text);
+      if (extracted.length === 0) return;
+      const now = clock.now();
+      deps.store.insertMemories(
+        extracted.map((m) => ({
+          id: randomUUID(),
+          kind: m.kind,
+          text: m.text,
+          importance: m.importance,
+          createdAt: now,
+          lastUsedAt: null,
+          status: 'active' as const,
+        })),
+      );
+      console.log(
+        `[radio] 🧠 记忆 ${extracted.length} 条：${extracted.map((m) => `[${m.kind}] ${m.text.slice(0, 24)}`).join('；')}`,
+      );
+    } catch (err) {
+      console.warn(
+        `[radio] 记忆提取失败（忽略，不影响节目）：${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -262,6 +312,8 @@ export function createRadio(deps: RadioDeps) {
               `[radio] 段记录入库失败（忽略）：${err instanceof Error ? err.message : String(err)}`,
             );
           }
+          // L1 记忆策展（P3）：播出后异步提取值得保留的节目事实（失败静默，不阻塞节目）
+          void extractAndStoreMemories(aired);
           broadcast({
             type: 'voice',
             segmentId: event.segmentId,
@@ -285,6 +337,24 @@ export function createRadio(deps: RadioDeps) {
     c.json({
       station: { name: deps.stationName, host: deps.hostName },
       audio: { ducking: deps.ducking },
+    }),
+  );
+
+  // ---- 维护者审查（P3，FR-100：与普通收听体验分离；单机版无鉴权，公网部署前需加） ----
+
+  app.get('/api/admin/memories', (c) => c.json(deps.store.listMemories()));
+
+  app.delete('/api/admin/memories/:id', (c) => {
+    deps.store.deleteMemory(c.req.param('id'));
+    return c.json({ ok: true });
+  });
+
+  app.get('/api/admin/messages', (c) => c.json(deps.store.listActiveMessages(clock.now())));
+
+  /** 维护者审查台页面（P3，FR-100） */
+  app.get('/admin', (c) =>
+    c.html(readFileSync(adminHtmlPath, 'utf-8'), 200, {
+      'Content-Type': 'text/html; charset=utf-8',
     }),
   );
 

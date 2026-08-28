@@ -1,4 +1,6 @@
 /** 行为参数：station.config.json 的 TS 镜像（调电台=改配置，不改代码） */
+
+import type { MemoryConfig } from './memory';
 import type { DayPart } from './time';
 import type { SubStyle } from './types';
 
@@ -69,4 +71,11 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   },
   speakWhenAlone: false,
   pendingTimeoutMs: 60_000,
+};
+
+export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
+  retrievalLimit: 5,
+  decayHalfLifeDays: 7,
+  recencyBoostHalfLifeDays: 1,
+  minScore: 0.02,
 };

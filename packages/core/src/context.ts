@@ -4,7 +4,7 @@
  * 纯逻辑零 IO：persona 内容由调用方传入（组装层读文件）。
  */
 import type { DayPartContext } from './time';
-import type { SegmentKind } from './types';
+import type { MemoryKind, SegmentKind } from './types';
 
 export interface TrackBrief {
   title: string;
@@ -25,6 +25,8 @@ export interface SegmentPromptContext {
   replyTo?: Array<{ id: string; body: string }>;
   /** kind=request_ack：被受理点歌的曲名 */
   ackTitle?: string;
+  /** L1 节目记忆（P3，FR-071/072：基于真实节目经历延续话题） */
+  memories?: Array<{ kind: MemoryKind; text: string; importance: number }>;
 }
 
 export interface SegmentPrompt {
@@ -85,6 +87,10 @@ export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   }
   if (ctx.ackTitle) {
     lines.push(`听众点了一首歌：《${ctx.ackTitle}》已受理，即将安排播出。`);
+  }
+  if (ctx.memories && ctx.memories.length > 0) {
+    const remembered = ctx.memories.map((m) => `[${m.kind}] ${m.text}`).join('\n');
+    lines.push(`你记得的节目历史（只可引用这些真实发生过的事，禁止编造或扩展）：\n${remembered}`);
   }
   lines.push('');
   lines.push(`请播一段「${ctx.hostName}的${ctx.stationName}」节目内容——${KIND_BRIEF[ctx.kind]}`);

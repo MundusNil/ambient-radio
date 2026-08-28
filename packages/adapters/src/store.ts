@@ -5,7 +5,7 @@
  * 「电台重启不失忆」：时间线从 plays 表重建。
  */
 import { randomUUID } from 'node:crypto';
-import type { MemoryKind, Segment, SegmentKind, Track } from '@ambient-radio/core';
+import type { MemoryKind, MemoryRecordL1, Segment, SegmentKind, Track } from '@ambient-radio/core';
 import Database from 'better-sqlite3';
 
 export interface PlayRow {
@@ -41,6 +41,12 @@ export interface Store {
   listActiveMessages(now: number): StoredMessage[];
   /** 删除过期留言；返回删除条数 */
   deleteExpiredMessages(now: number): number;
+  /** L1 节目记忆（P3，FR-077：维护者可查看/修正/删除） */
+  insertMemories(memories: MemoryRecordL1[]): void;
+  listMemories(): MemoryRecordL1[];
+  deleteMemory(id: string): void;
+  /** 更新最近引用时间（检索加权，FR-075） */
+  touchMemory(id: string, at: number): void;
 }
 
 const SCHEMA = `
@@ -242,6 +248,56 @@ export function createStore(dbPath: string): Store {
     deleteExpiredMessages(now: number): number {
       const result = db.prepare('DELETE FROM messages WHERE expires_at <= ?').run(now);
       return result.changes;
+    },
+
+    insertMemories(memories: MemoryRecordL1[]): void {
+      const insert = db.prepare(`
+        INSERT OR REPLACE INTO memories (id, kind, text, importance, created_at, last_used_at, status)
+        VALUES (@id, @kind, @text, @importance, @createdAt, @lastUsedAt, @status)
+      `);
+      const tx = db.transaction((rows: Array<Record<string, unknown>>) => {
+        for (const row of rows) insert.run(row);
+      });
+      tx(
+        memories.map((m) => ({
+          id: m.id,
+          kind: m.kind,
+          text: m.text,
+          importance: m.importance,
+          createdAt: m.createdAt,
+          lastUsedAt: m.lastUsedAt,
+          status: m.status,
+        })),
+      );
+    },
+
+    listMemories(): MemoryRecordL1[] {
+      const rows = db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all() as Array<{
+        id: string;
+        kind: MemoryKind;
+        text: string;
+        importance: number;
+        created_at: number;
+        last_used_at: number | null;
+        status: 'active' | 'archived' | 'deleted';
+      }>;
+      return rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        text: r.text,
+        importance: r.importance,
+        createdAt: r.created_at,
+        lastUsedAt: r.last_used_at,
+        status: r.status,
+      }));
+    },
+
+    deleteMemory(id: string): void {
+      db.prepare('DELETE FROM memories WHERE id = ?').run(id);
+    },
+
+    touchMemory(id: string, at: number): void {
+      db.prepare('UPDATE memories SET last_used_at = ? WHERE id = ?').run(at, id);
     },
   };
 }

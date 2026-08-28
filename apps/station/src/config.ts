@@ -1,14 +1,19 @@
 /** 配置加载：station.config.json → 类型化配置（默认值兜底；调电台=改配置，D 决策） */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EngineConfig, SchedulerConfig } from '@ambient-radio/core';
-import { DEFAULT_ENGINE_CONFIG, DEFAULT_SCHEDULER_CONFIG } from '@ambient-radio/core';
+import type { EngineConfig, MemoryConfig, SchedulerConfig } from '@ambient-radio/core';
+import {
+  DEFAULT_ENGINE_CONFIG,
+  DEFAULT_MEMORY_CONFIG,
+  DEFAULT_SCHEDULER_CONFIG,
+} from '@ambient-radio/core';
 import { findRepoRoot } from './paths';
 
 interface RawJson {
   station?: { name?: string; host?: string; port?: number };
   engine?: Partial<EngineConfig> & { nodeWindow?: Partial<EngineConfig['nodeWindow']> };
   scheduler?: Partial<SchedulerConfig>;
+  memory?: Partial<MemoryConfig>;
   audio?: { ducking?: Partial<DuckingConfig> };
   llm?: Partial<LlmConfig>;
   tts?: Partial<TtsConfig>;
@@ -48,6 +53,7 @@ export interface StationRuntimeConfig {
   tts: TtsConfig;
   messages: { retentionDays: number };
   library: { root: string };
+  memory: MemoryConfig;
 }
 
 const DEFAULT_DUCKING: DuckingConfig = {
@@ -107,5 +113,6 @@ export function loadStationConfig(
     },
     messages: { retentionDays: 7, ...raw.messages },
     library: { root: 'config/library', ...raw.library },
+    memory: { ...DEFAULT_MEMORY_CONFIG, ...raw.memory },
   };
 }

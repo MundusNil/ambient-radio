@@ -8,7 +8,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import type { Clock } from '@ambient-radio/adapters';
+import type { Clock, Store } from '@ambient-radio/adapters';
 import type {
   EngineConfig,
   EngineEvent,
@@ -63,6 +63,7 @@ export interface RadioDeps {
   clock: Clock;
   llm: LlmClient;
   tts: TtsClient;
+  store: Store;
 }
 
 export function createRadio(deps: RadioDeps) {
@@ -77,6 +78,9 @@ export function createRadio(deps: RadioDeps) {
   });
 
   const wss = new WebSocketServer({ noServer: true });
+
+  /** 当前曲目的 play 记录 id（track-ended 时收尾） */
+  let currentPlayId: string | null = null;
 
   /** 生成中/已生成待播的段落（id → 内容） */
   const voiceSegments = new Map<string, VoiceSegment>();
@@ -110,6 +114,10 @@ export function createRadio(deps: RadioDeps) {
     const decision = scheduler.pickNext(at);
     scheduler.reportStarted(decision.track.id, at);
     engine.onTrackStarted(decision.track, at);
+    if (currentPlayId !== null) {
+      deps.store.endPlay(currentPlayId, at);
+    }
+    currentPlayId = deps.store.startPlay(decision.track.id, at);
     if (decision.relaxedNoRepeat) {
       console.warn(
         `[scheduler] 曲库不足，放宽 30 分钟防重复（FR-018 例外）：${decision.track.title}`,
@@ -181,6 +189,17 @@ export function createRadio(deps: RadioDeps) {
           if (airedSegments.length > AIRED_SEGMENT_LIMIT) {
             airedSegments.shift();
           }
+          // 节目记录（P3 记忆的基础数据；原始文案仅存库，不外泄）
+          deps.store.insertSegment({
+            id: aired.id,
+            kind: aired.kind,
+            text: aired.text,
+            audioPath: aired.audioPath,
+            durationMs: aired.durationMs,
+            plannedAt: 0,
+            airedAt: aired.startedAt,
+            status: 'aired',
+          });
           broadcast({
             type: 'voice',
             segmentId: event.segmentId,
@@ -237,11 +256,38 @@ export function createRadio(deps: RadioDeps) {
 
   function start(): void {
     // 电台开机即开播（D5：音乐时间线永远走，调频进来时音乐已经在放）
-    startTrack(clock.now());
+    // 重启恢复：上次没播完的曲目从剩余位置接着播（电台重启不失忆）
+    const now = clock.now();
+    const unfinished = deps.store.getLastUnfinishedPlay();
+    const resumeTrack = unfinished ? trackById.get(unfinished.trackId) : undefined;
+    if (unfinished && resumeTrack && now < unfinished.startedAt + resumeTrack.durationMs) {
+      // 恢复调度器防重复记忆：最近 30 分钟播放史
+      for (const play of deps.store.listRecentPlays(now - deps.schedulerConfig.noRepeatWindowMs)) {
+        scheduler.reportStarted(play.trackId, play.startedAt);
+      }
+      engine.onTrackStarted(resumeTrack, unfinished.startedAt);
+      currentPlayId = unfinished.id;
+      console.log(
+        `[radio] ↻ 恢复上次节目：${resumeTrack.title}（${Math.round((now - unfinished.startedAt) / 1000)}s 处）`,
+      );
+      broadcast({
+        type: 'track',
+        trackId: resumeTrack.id,
+        title: resumeTrack.title,
+        startedAt: unfinished.startedAt,
+        durationMs: resumeTrack.durationMs,
+      });
+    } else {
+      // 上次播完或已过时：正常开播
+      if (unfinished && resumeTrack) {
+        deps.store.endPlay(unfinished.id, now);
+      }
+      startTrack(now);
+    }
     tickTimer = setInterval(() => {
-      const now = clock.now();
-      const events = engine.tick(now);
-      if (events.length > 0) handleEvents(events, now);
+      const tickNow = clock.now();
+      const events = engine.tick(tickNow);
+      if (events.length > 0) handleEvents(events, tickNow);
     }, 1000);
   }
 

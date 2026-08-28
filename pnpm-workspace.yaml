@@ -9,4 +9,5 @@ minimumReleaseAgeExclude:
   - hono@4.13.3
 
 allowBuilds:
+  better-sqlite3: true
   esbuild: true

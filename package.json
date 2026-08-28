@@ -11,6 +11,7 @@
   "scripts": {
     "dev:station": "pnpm --filter @ambient-radio/station dev",
     "dev:web": "pnpm --filter @ambient-radio/web dev",
+    "scan": "pnpm --filter @ambient-radio/station scan",
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",

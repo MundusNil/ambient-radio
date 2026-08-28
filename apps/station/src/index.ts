@@ -1,6 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { createEdgeTts, createOpenAiCompatibleLlm, systemClock } from '@ambient-radio/adapters';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import {
+  createEdgeTts,
+  createOpenAiCompatibleLlm,
+  createStore,
+  systemClock,
+} from '@ambient-radio/adapters';
 import { getDayPartContext } from '@ambient-radio/core';
 import { serve } from '@hono/node-server';
 import { loadStationConfig } from './config';
@@ -14,7 +19,16 @@ async function main(): Promise<void> {
   const repoRoot = findRepoRoot();
   const config = loadStationConfig();
   const libraryRoot = resolve(repoRoot, config.library.root);
-  const tracks = await scanLibrary(libraryRoot);
+  const dbPath = resolve(repoRoot, 'data', 'station.db');
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const store = createStore(dbPath);
+  // 曲库：优先读库；首次启动自动扫描入库（之后用 pnpm scan 更新）
+  let tracks = store.listTracks();
+  if (tracks.length === 0) {
+    console.log('[station] 曲库为空，首次扫描入库…');
+    tracks = await scanLibrary(libraryRoot);
+    if (tracks.length > 0) store.upsertTracks(tracks);
+  }
 
   if (tracks.length === 0) {
     console.error(
@@ -57,6 +71,7 @@ async function main(): Promise<void> {
       cacheDir: resolve(repoRoot, config.tts.cacheDir),
       loudnorm: config.tts.postProcess === 'loudnorm',
     }),
+    store,
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

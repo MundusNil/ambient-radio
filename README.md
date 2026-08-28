@@ -23,6 +23,7 @@ ambient-radio/                  # pnpm workspaces + TypeScript strict
 │  ├─ persona.md   # 梦可的人格档案（维护者所有，运行时只读）
 │  ├─ station.config.json  # 全部可调参数（调电台=改配置）
 │  └─ library/     # 曲库根目录，子文件夹名 = 子风格标签
+├─ data/           # SQLite（tracks/plays/segments；电台重启不失忆）
 └─ docs/           # PRD 与技术设计
 ```
 

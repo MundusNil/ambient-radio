@@ -22,6 +22,8 @@ async function main(): Promise<void> {
   const tracks = await scanLibrary(libraryRoot);
   const store = createStore(dbPath);
   store.upsertTracks(tracks);
+  // 清理已不存在的曲目（文件被删/移动后同步，避免残留记录被恢复）
+  store.deleteTracksNotIn(tracks.map((t) => t.path));
 
   console.log(`[scan] 曲库 ${tracks.length} 首已入库：${dbPath}`);
   const byStyle = new Map<string, number>();

@@ -143,3 +143,13 @@ describe('store · memories（P3，L1 节目记忆）', () => {
     expect(memories[0]?.lastUsedAt).toBe(2_000_000);
   });
 });
+
+describe('store · 曲库清理（scan 删歌同步）', () => {
+  it('删除 DB 中已不存在的曲目（文件被删/移动后）', () => {
+    const store = createStore(':memory:');
+    store.upsertTracks([T('a', 'cafe/a.mp3'), T('b', 'cafe/b.mp3'), T('c', 'cafe/c.mp3')]);
+    store.deleteTracksNotIn(['cafe/a.mp3', 'cafe/c.mp3']); // b 的文件被删了
+    const paths = store.listTracks().map((t) => t.path);
+    expect(paths).toEqual(['cafe/a.mp3', 'cafe/c.mp3']);
+  });
+});

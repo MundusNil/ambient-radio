@@ -24,12 +24,14 @@
       "game-bgm": 1.0,
       "cafe": 1.0,
       "vocal-soft": 0.6,
-      "night-quiet": 0.8
+      "night-quiet": 0.8,
+      "va11halla": 0.9
     },
     "timeOfDayBoost": {
       "deepNight": {
         "night-quiet": 1.8,
-        "vocal-soft": 1.2
+        "vocal-soft": 1.2,
+        "va11halla": 1.6
       },
       "morning": {
         "cafe": 1.3
@@ -37,9 +39,12 @@
       "afternoon": {
         "game-bgm": 1.2
       },
-      "evening": {},
+      "evening": {
+        "va11halla": 1.5
+      },
       "lateNight": {
-        "night-quiet": 1.5
+        "night-quiet": 1.5,
+        "va11halla": 1.4
       }
     },
     "recencyPenaltyHalfLifePlays": 8

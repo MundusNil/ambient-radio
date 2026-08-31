@@ -7,6 +7,13 @@ import type { Track } from '@ambient-radio/core';
 
 const AUDIO_EXT = new Set(['.mp3', '.flac', '.ogg', '.m4a', '.wav', '.opus']);
 
+/** 清洗曲名：去掉开头的 track 编号前缀（如「1-01 Hopes and Dreams」→「Hopes and Dreams」） */
+function cleanTitle(filename: string): string {
+  return basename(filename, extname(filename))
+    .replace(/^\d+-\d+\s+/, '')
+    .trim();
+}
+
 function trackIdOf(root: string, absPath: string): string {
   return createHash('md5').update(relative(root, absPath)).digest('hex').slice(0, 12);
 }
@@ -30,7 +37,7 @@ export async function scanLibrary(root: string): Promise<Track[]> {
       tracks.push({
         id: trackIdOf(root, absPath),
         path: relative(root, absPath).replaceAll('\\', '/'),
-        title: basename(file.name, extname(file.name)),
+        title: cleanTitle(file.name),
         artist: null,
         durationMs,
         styles: [dir.name],

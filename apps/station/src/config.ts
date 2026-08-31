@@ -1,9 +1,15 @@
 /** 配置加载：station.config.json → 类型化配置（默认值兜底；调电台=改配置，D 决策） */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EngineConfig, MemoryConfig, SchedulerConfig } from '@ambient-radio/core';
+import type {
+  EngineConfig,
+  InterludeConfig,
+  MemoryConfig,
+  SchedulerConfig,
+} from '@ambient-radio/core';
 import {
   DEFAULT_ENGINE_CONFIG,
+  DEFAULT_INTERLUDE_CONFIG,
   DEFAULT_MEMORY_CONFIG,
   DEFAULT_SCHEDULER_CONFIG,
 } from '@ambient-radio/core';
@@ -13,6 +19,7 @@ interface RawJson {
   station?: { name?: string; host?: string; port?: number };
   engine?: Partial<EngineConfig> & { nodeWindow?: Partial<EngineConfig['nodeWindow']> };
   scheduler?: Partial<SchedulerConfig>;
+  interlude?: Partial<InterludeConfig>;
   memory?: Partial<MemoryConfig>;
   audio?: { ducking?: Partial<DuckingConfig> };
   llm?: Partial<LlmConfig>;
@@ -48,6 +55,7 @@ export interface StationRuntimeConfig {
   station: { name: string; host: string; port: number };
   engine: EngineConfig;
   scheduler: SchedulerConfig;
+  interlude: InterludeConfig;
   audio: { ducking: DuckingConfig };
   llm: LlmConfig;
   tts: TtsConfig;
@@ -92,6 +100,7 @@ export function loadStationConfig(
     },
     engine,
     scheduler,
+    interlude: { ...DEFAULT_INTERLUDE_CONFIG, ...raw.interlude },
     audio: {
       ducking: { ...DEFAULT_DUCKING, ...raw.audio?.ducking },
     },

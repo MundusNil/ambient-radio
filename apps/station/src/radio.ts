@@ -15,6 +15,7 @@ import type { Clock, Store } from '@ambient-radio/adapters';
 import type {
   EngineConfig,
   EngineEvent,
+  InterludeConfig,
   LlmClient,
   MemoryConfig,
   SchedulerConfig,
@@ -86,6 +87,8 @@ export interface RadioDeps {
   retentionDays: number;
   /** L1 记忆检索配置（P3） */
   memoryConfig: MemoryConfig;
+  /** 串场起头配置（调电台=改配置） */
+  interludeConfig: InterludeConfig;
 }
 
 export function createRadio(deps: RadioDeps) {
@@ -195,6 +198,8 @@ export function createRadio(deps: RadioDeps) {
         recentTracks: snap.recentTracks,
         replyTo: plan.replyTo,
         ackTitle: plan.ackTitle,
+        interlude: deps.interludeConfig,
+        openerSeed: Math.random(),
         memories: memories.map((m) => ({
           kind: m.kind,
           text: m.text,

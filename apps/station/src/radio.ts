@@ -136,6 +136,7 @@ export function createRadio(deps: RadioDeps) {
     const decision = scheduler.pickNext(at);
     scheduler.reportStarted(decision.track.id, at);
     engine.onTrackStarted(decision.track, at);
+    consecutiveFailures = 0; // 成功播出一首，失败计数清零（「连续」语义）
     if (currentPlayId !== null) {
       deps.store.endPlay(currentPlayId, at);
     }
@@ -441,14 +442,21 @@ export function createRadio(deps: RadioDeps) {
   let consecutiveFailures = 0;
 
   /** 单曲损坏：拉黑 + 强制换下一首（ER-004） */
-  function onTrackFailed(trackId: string): void {
+  async function onTrackFailed(trackId: string): Promise<void> {
     const track = trackById.get(trackId);
     if (!track) return;
-    scheduler.blacklistTrack(trackId);
+    // 区分「文件真丢了」与「解码暂时失败」：文件还在 → 不拉黑（可能是瞬时解码压力），仅换歌
+    const absPath = join(libraryRoot, track.path);
+    const fileExists = await stat(absPath)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!fileExists) {
+      scheduler.blacklistTrack(trackId);
+      console.warn(`[radio] ⚠️ 曲目文件缺失（${track.title}）已拉黑，尝试下一首（ER-004）`);
+    } else {
+      console.warn(`[radio] ⚠️ 曲目解码失败（${track.title}）文件仍在，换下一首重试（不拉黑）`);
+    }
     consecutiveFailures += 1;
-    console.warn(
-      `[radio] ⚠️ 曲目播放失败（${track.title}）已拉黑，尝试下一首（ER-004，连续失败 ${consecutiveFailures}）`,
-    );
     if (consecutiveFailures >= 3) {
       console.error('[radio] 📡 连续 3 首失败：信号丢失（ER-005）');
       broadcast({ type: 'off-air', reason: 'library' });
@@ -483,7 +491,7 @@ export function createRadio(deps: RadioDeps) {
     try {
       const parsed = JSON.parse(raw) as { type?: string; body?: string; trackId?: string };
       if (parsed.type === 'track-failed' && typeof parsed.trackId === 'string') {
-        onTrackFailed(parsed.trackId);
+        void onTrackFailed(parsed.trackId);
         return;
       }
       if (parsed.type !== 'message' || typeof parsed.body !== 'string' || !parsed.body.trim()) {

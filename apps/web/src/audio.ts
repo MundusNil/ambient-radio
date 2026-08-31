@@ -4,7 +4,7 @@
  * 「调频进入」：按服务器时间戳直接 seek 进正在进行的节目（D5）。
  */
 
-const BUFFER_CACHE_LIMIT = 10;
+const BUFFER_CACHE_LIMIT = 6;
 
 export class RadioAudio {
   private ctx: AudioContext | null = null;
@@ -17,6 +17,8 @@ export class RadioAudio {
   private speechSource: AudioBufferSourceNode | null = null;
   private currentKey = '';
   private volume = 0.8;
+  /** 换曲竞态防护：只有最新一次 play 调用能真正播出（防止并发解码交错） */
+  private playGeneration = 0;
   private bufferCache = new Map<string, AudioBuffer>();
   private ducking = { speechGain: 0.22, attackTauMs: 250, releaseDelayMs: 1200, releaseTauMs: 600 };
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,8 +54,11 @@ export class RadioAudio {
     if (!ctx || !trackId) return;
     const key = `${trackId}:${startedAt}`;
     if (key === this.currentKey) return;
+    const generation = ++this.playGeneration;
 
     const buffer = await this.loadBuffer(trackId).catch(() => null);
+    // 解码期间又来了一次换曲：放弃本次（由最新调用接管）
+    if (generation !== this.playGeneration) return;
     if (!buffer) {
       // ER-004：解码失败（文件损坏）→ 上报电台跳过该曲
       this.onTrackFailed?.(trackId);
@@ -173,12 +178,35 @@ export class RadioAudio {
     const raw = await res.arrayBuffer();
     const ctx = this.ctx;
     if (!ctx) throw new Error('audio context closed');
-    const buffer = await ctx.decodeAudioData(raw);
+    try {
+      const buffer = await ctx.decodeAudioData(raw);
+      this.cacheBuffer(trackId, buffer);
+      return buffer;
+    } catch (err) {
+      // 解码失败重试一次（瞬时内存/CPU 压力可能造成一次性失败）
+      console.warn(
+        `[audio] 解码失败（${trackId}），重试：${err instanceof Error ? err.message : String(err)}`,
+      );
+      await new Promise((r) => setTimeout(r, 400));
+      try {
+        const buffer = await ctx.decodeAudioData(raw);
+        this.cacheBuffer(trackId, buffer);
+        return buffer;
+      } catch (err2) {
+        console.warn(
+          `[audio] 解码重试仍失败（${trackId}）：${err2 instanceof Error ? err2.message : String(err2)}`,
+        );
+        throw err2;
+      }
+    }
+  }
+
+  private cacheBuffer(trackId: string, buffer: AudioBuffer): void {
     this.bufferCache.set(trackId, buffer);
+    // 解码后 PCM 体积大（flac 4 分钟 ≈ 40MB）：上限 6 首防内存膨胀
     if (this.bufferCache.size > BUFFER_CACHE_LIMIT) {
       const oldest = this.bufferCache.keys().next().value;
       if (oldest !== undefined) this.bufferCache.delete(oldest);
     }
-    return buffer;
   }
 }

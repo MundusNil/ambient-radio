@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SynthesizedSpeech, TtsClient } from '@ambient-radio/core';
+import { ffmpegPath } from './ffmpeg-bin';
 import { probeDurationMs } from './ffprobe';
 
 export interface EdgeTtsOptions {
@@ -87,7 +88,7 @@ export function createEdgeTts(options: EdgeTtsOptions): TtsClient {
       if (loudnorm) {
         const normPath = join(cacheDir, `${hash}.norm.mp3`);
         await runProc(
-          'ffmpeg',
+          ffmpegPath(),
           ['-y', '-i', rawPath, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-q:a', '2', normPath],
           timeoutMs,
         );

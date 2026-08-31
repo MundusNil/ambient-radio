@@ -9,6 +9,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "start": "node scripts/start.mjs",
+    "setup:voice": "python -m pip install edge-tts",
     "dev:station": "pnpm --filter @ambient-radio/station dev",
     "dev:web": "pnpm --filter @ambient-radio/web dev",
     "scan": "pnpm --filter @ambient-radio/station scan",

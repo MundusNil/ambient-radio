@@ -1,9 +1,10 @@
 /** ffprobe：读音频时长（本地 ffmpeg 工具链，D3 曲库与 TTS 共用） */
 import { spawn } from 'node:child_process';
+import { ffprobePath } from './ffmpeg-bin';
 
 export function probeDurationMs(file: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('ffprobe', [
+    const proc = spawn(ffprobePath(), [
       '-v',
       'quiet',
       '-print_format',

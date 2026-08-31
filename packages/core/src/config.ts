@@ -15,6 +15,13 @@ export interface SchedulerConfig {
   recencyPenaltyHalfLifePlays: number;
 }
 
+export interface InterludeConfig {
+  /** 0~1：串场以「像瞥了眼钟」的自然口吻带出时段的概率；其余从音乐/观察/记忆起头（避免千篇一律报时） */
+  timeOpenerRatio: number;
+  /** 串场起头灵感种子：主播可借力的角度（维护者可在 station.config.json 调，不进代码） */
+  seeds: string[];
+}
+
 export interface EngineConfig {
   /** FR-031：主动串场间隔采样区间（8~12 次/小时） */
   talkIntervalMs: [number, number];
@@ -71,6 +78,17 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   },
   speakWhenAlone: false,
   pendingTimeoutMs: 60_000,
+};
+
+export const DEFAULT_INTERLUDE_CONFIG: InterludeConfig = {
+  timeOpenerRatio: 0.18,
+  seeds: [
+    '从正在放的音乐的感觉起头：它让你联想到什么画面、气味，或此刻的心情。',
+    '说一个轻盈的小观察：窗外的光、杯子里的咖啡、城市深夜的某个声音。',
+    '接上节目里的一个小记忆或内部梗，像老听众都懂的那样轻轻一提。',
+    '就着刚才播过的某首歌，聊一句你的私人感受，不解说、不报幕。',
+    '直接落进此刻的氛围里，几乎不铺垫，像你本来就在自言自语。',
+  ],
 };
 
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {

@@ -55,6 +55,7 @@ async function main(): Promise<void> {
     persona,
     engineConfig: config.engine,
     schedulerConfig: config.scheduler,
+    interludeConfig: config.interlude,
     ducking: config.audio.ducking,
     tracks,
     libraryRoot,

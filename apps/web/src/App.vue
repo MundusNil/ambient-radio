@@ -47,7 +47,7 @@ async function refreshState(): Promise<void> {
 
 function applyTuneIn(s: StationState): void {
   const plan = planTuneIn(s);
-  if (plan.trackId) void audio.play(plan.trackId, plan.startedAt, clockOffset);
+  if (plan.trackId) void audio.play(plan.trackId, plan.startedAt, clockOffset, true);
   if (plan.speechSegmentId) {
     void audio.playSpeech(plan.speechSegmentId);
     hostTalking.value = true;
@@ -73,7 +73,7 @@ function handleEvent(event: ServerEvent): void {
       serverTime: Date.now() + clockOffset,
     };
     if (live.value) {
-      void audio.play(event.trackId, event.startedAt, clockOffset);
+      void audio.play(event.trackId, event.startedAt, clockOffset, false);
     }
   } else if (event.type === 'voice') {
     if (live.value) {
@@ -93,7 +93,7 @@ function handleEvent(event: ServerEvent): void {
 async function openStation(): Promise<void> {
   connecting.value = true;
   try {
-    await audio.unlock(info.value?.audio.ducking);
+    await audio.unlock(info.value?.audio.ducking, info.value?.audio.crossfadeMs);
     await refreshState();
     if (state.value) applyTuneIn(state.value);
     ws = connectWs(handleEvent);

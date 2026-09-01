@@ -13,6 +13,8 @@ export class RadioAudio {
   /** ducking 层：主播说话时压低、说完恢复（FR-043/044；参数来自 /api/config） */
   private duckGain: GainNode | null = null;
   private source: AudioBufferSourceNode | null = null;
+  /** 音乐轨独立增益：切歌时旧轨淡出、新轨淡入，交叠成平滑过渡（不再硬切） */
+  private sourceGain: GainNode | null = null;
   /** 语音轨 source（独立于音乐轨；播完自动 unduck，FR-044） */
   private speechSource: AudioBufferSourceNode | null = null;
   private currentKey = '';
@@ -20,19 +22,25 @@ export class RadioAudio {
   /** 换曲竞态防护：只有最新一次 play 调用能真正播出（防止并发解码交错） */
   private playGeneration = 0;
   private bufferCache = new Map<string, AudioBuffer>();
-  private ducking = { speechGain: 0.22, attackTauMs: 250, releaseDelayMs: 1200, releaseTauMs: 600 };
+  private ducking = { speechGain: 0.45, attackTauMs: 250, releaseDelayMs: 1200, releaseTauMs: 600 };
+  /** 切歌交叠时长（ms）；0 = 硬切。可调，听感在 150~400ms 最顺 */
+  private crossfadeMs = 250;
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
   /** ER-004：曲目解码失败回调（App 层上报电台） */
   onTrackFailed: ((trackId: string) => void) | null = null;
 
   /** 必须在用户手势中调用（浏览器自动播放策略）；「开台」按钮即手势 */
-  async unlock(ducking?: {
-    speechGain: number;
-    attackTauMs: number;
-    releaseDelayMs: number;
-    releaseTauMs: number;
-  }): Promise<void> {
+  async unlock(
+    ducking?: {
+      speechGain: number;
+      attackTauMs: number;
+      releaseDelayMs: number;
+      releaseTauMs: number;
+    },
+    crossfadeMs?: number,
+  ): Promise<void> {
     if (ducking) this.ducking = ducking;
+    if (typeof crossfadeMs === 'number' && crossfadeMs >= 0) this.crossfadeMs = crossfadeMs;
     if (!this.ctx) {
       this.ctx = new AudioContext();
       this.duckGain = this.ctx.createGain();
@@ -48,8 +56,17 @@ export class RadioAudio {
     return this.ctx !== null;
   }
 
-  /** 播放（或切到）指定曲目；startedAt 为服务器时间戳 */
-  async play(trackId: string, startedAt: number, clockOffsetMs: number): Promise<void> {
+  /**
+   * 播放（或切到）指定曲目；startedAt 为服务器时间戳。
+   * @param tuneIn 是否「调频进入」：true=刚开台/重新同步，对齐到正在播放的位置（D5）；
+   *               false=收听中切歌，从 0 开始，绝不快进（否则会把下一首开头按事件延迟截掉）。
+   */
+  async play(
+    trackId: string,
+    startedAt: number,
+    clockOffsetMs: number,
+    tuneIn = false,
+  ): Promise<void> {
     const ctx = this.ctx;
     if (!ctx || !trackId) return;
     const key = `${trackId}:${startedAt}`;
@@ -67,16 +84,62 @@ export class RadioAudio {
     // 加载期间被关台：丢弃
     if (!this.ctx || !this.duckGain) return;
 
-    this.stopCurrent();
-    const src = this.ctx.createBufferSource();
+    const now = ctx.currentTime;
+    const xf = Math.max(0, this.crossfadeMs) / 1000;
+
+    // 新曲目：自带增益节点，先静音再淡入（不接 duckGain 之外的公共点）
+    const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(this.duckGain);
-    // 服务器时间对齐：本地时钟 + offset = 服务器时刻
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    src.connect(gain);
+    gain.connect(this.duckGain);
+
+    // 上一首：交叠淡出后停止（切歌从硬切变成平滑过渡）
+    this.fadeOutCurrent(xf, now);
+
+    // 调频进入：对齐到服务器当前播放位置（中途加入电台）。
+    // 切歌：从头播，不按事件延迟快进——快进会把下一首开头截掉，听感发秃。
     const positionMs = Date.now() + clockOffsetMs - startedAt;
-    const offsetSec = Math.min(Math.max(0, positionMs / 1000), Math.max(0, buffer.duration - 0.5));
-    src.start(this.ctx.currentTime + 0.08, offsetSec);
+    const offsetSec = tuneIn
+      ? Math.min(Math.max(0, positionMs / 1000), Math.max(0, buffer.duration - 0.5))
+      : 0;
+
+    // 淡入与上一首淡出等长，交叠成平滑过渡
+    gain.gain.linearRampToValueAtTime(1, now + 0.06 + xf);
+    src.start(now + 0.06, offsetSec);
+    // 停止后自动断开释放，避免节点堆积
+    src.onended = () => {
+      try {
+        gain.disconnect();
+      } catch {
+        // 已断开
+      }
+      try {
+        src.disconnect();
+      } catch {
+        // 已断开
+      }
+    };
+
     this.source = src;
+    this.sourceGain = gain;
     this.currentKey = key;
+  }
+
+  /** 把正在播的旧曲在 xf 秒内淡出并停止（与 new 交叠）；无旧曲则空操作 */
+  private fadeOutCurrent(xf: number, now: number): void {
+    const oldSrc = this.source;
+    const oldGain = this.sourceGain;
+    if (!oldSrc || !oldGain) return;
+    try {
+      // cancelScheduledValues 后从当前值接着淡出（不读 .value 的固有值陷阱）
+      oldGain.gain.cancelScheduledValues(now);
+      oldGain.gain.linearRampToValueAtTime(0, now + xf);
+      oldSrc.stop(now + xf + 0.03);
+    } catch {
+      // 已停止：忽略
+    }
   }
 
   /** 播放梦可的语音段：音乐压低，语音播完平滑恢复（FR-043/044） */
@@ -166,6 +229,14 @@ export class RadioAudio {
       }
       this.source.disconnect();
       this.source = null;
+    }
+    if (this.sourceGain) {
+      try {
+        this.sourceGain.disconnect();
+      } catch {
+        // 已断开
+      }
+      this.sourceGain = null;
     }
     this.currentKey = '';
   }

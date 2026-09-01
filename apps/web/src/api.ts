@@ -10,6 +10,8 @@ export interface StationInfo {
       releaseDelayMs: number;
       releaseTauMs: number;
     };
+    /** 切歌交叠淡变时长（ms）；0 = 硬切 */
+    crossfadeMs: number;
   };
 }
 

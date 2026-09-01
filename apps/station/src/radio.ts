@@ -14,6 +14,7 @@ import type {
   EngineConfig,
   EngineEvent,
   LlmClient,
+  LoreEntry,
   MemoryConfig,
   SchedulerConfig,
   SegmentKind,
@@ -70,6 +71,8 @@ export interface RadioDeps {
   stationName: string;
   hostName: string;
   persona: string;
+  speechExamples: string;
+  loreEntries: LoreEntry[];
   engineConfig: EngineConfig;
   schedulerConfig: SchedulerConfig;
   ducking: DuckingConfig;
@@ -108,9 +111,15 @@ export function createRadio(deps: RadioDeps) {
     persona: deps.persona,
     stationName: deps.stationName,
     hostName: deps.hostName,
-    speechExamples: '',
-    loreEntries: [],
-    retrieveRecentSpeech: () => [],
+    speechExamples: deps.speechExamples,
+    loreEntries: deps.loreEntries,
+    retrieveRecentSpeech: () => {
+      const segs = deps.store.listSegments().filter(
+        (s) => s.status === 'aired' && s.airedAt !== null && s.text.trim().length > 0,
+      );
+      segs.sort((a, b) => (a.airedAt ?? 0) - (b.airedAt ?? 0));
+      return segs.slice(-4).map((s) => s.text);
+    },
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,
     view: () => {

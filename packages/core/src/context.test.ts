@@ -18,7 +18,7 @@ describe('buildSegmentPrompt', () => {
   it('system 注入人格全文与直播规则', () => {
     const p = buildSegmentPrompt(ctx);
     expect(p.system).toContain(PERSONA);
-    expect(p.system).toContain('写你的下一句');
+    expect(p.system).toContain('你是梦可，一台 AI 氛围电台的主播，正在直播');
     expect(p.system).not.toContain('{PERSONA}');
   });
 
@@ -100,7 +100,7 @@ describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
 describe('buildSegmentPrompt · 酒馆式装配', () => {
   it('system 主指令短，不含起头灵感立法', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.system).toContain('写你的下一句');
+    expect(p.system).toContain('自然地接上刚才的话');
     expect(p.system).not.toContain('开场千变万化');
     expect(p.user).not.toContain('可选的起头灵感');
     expect(p.user).not.toContain('起头护栏');
@@ -128,8 +128,8 @@ describe('buildSegmentPrompt · 酒馆式装配', () => {
     });
     const without = buildSegmentPrompt({ ...ctx, lore: [] });
     expect(withLore.user).toContain('格莱德市霓虹酒吧。');
-    expect(withLore.user).toContain('手边的世界书');
-    expect(without.user).not.toContain('手边的世界书');
+    expect(withLore.user).toContain('可以聊的背景');
+    expect(without.user).not.toContain('可以聊的背景');
   });
 
   it('示例口播出现在 user 里', () => {
@@ -137,7 +137,7 @@ describe('buildSegmentPrompt · 酒馆式装配', () => {
       ...ctx,
       speechExamples: 'Last Call 这名字也太直白了。',
     });
-    expect(p.user).toContain('口吻样本');
+    expect(p.user).toContain('口吻参考');
     expect(p.user).toContain('Last Call 这名字也太直白了。');
   });
 

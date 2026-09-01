@@ -18,7 +18,7 @@ describe('buildSegmentPrompt', () => {
   it('system 注入人格全文与直播规则', () => {
     const p = buildSegmentPrompt(ctx);
     expect(p.system).toContain(PERSONA);
-    expect(p.system).toContain('TTS');
+    expect(p.system).toContain('写你的下一句');
     expect(p.system).not.toContain('{PERSONA}');
   });
 
@@ -35,10 +35,12 @@ describe('buildSegmentPrompt', () => {
     expect(p.user).toContain('欢迎回来');
   });
 
-  it('串场与主题有不同的长度约束（FR-032/033）', () => {
+  it('串场与主题仍区分意图，但不设字数下限（FR-032/033）', () => {
     const interlude = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
     const topic = buildSegmentPrompt({ ...ctx, kind: 'topic' });
-    expect(interlude.user).toContain('40~90 字');
+    expect(interlude.user).toContain('常规串场');
+    expect(interlude.user).not.toContain('40~90 字');
+    expect(topic.user).toContain('小主题');
     expect(topic.user).toContain('200~450 字');
   });
 
@@ -95,65 +97,59 @@ describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
   });
 });
 
-describe('buildSegmentPrompt · 串场起头（可选灵感 + 护栏，不强制单一角度）', () => {
-  it('时段背景仍作为参考出现，但不再是「必选其一的起头建议」（FR-036）', () => {
-    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
-    expect(p.user).toContain('时段背景');
-    expect(p.user).toContain('周三');
-    // 改为整池「可选灵感」+「护栏」，而不是每次强制挑一条
-    expect(p.user).toContain('可选的起头灵感');
-    expect(p.user).toContain('起头护栏');
+describe('buildSegmentPrompt · 酒馆式装配', () => {
+  it('system 主指令短，不含起头灵感立法', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.system).toContain('写你的下一句');
+    expect(p.system).not.toContain('开场千变万化');
+    expect(p.user).not.toContain('可选的起头灵感');
+    expect(p.user).not.toContain('起头护栏');
   });
 
-  it('相同输入产出稳定（纯函数，不再依赖随机 seed）', () => {
-    const a = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
-    const b = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
-    expect(a.user).toBe(b.user);
-  });
-
-  it('灵感池整池列出、模型可自由选用（不再 5 选 1）', () => {
-    const cfg = { seeds: ['角度一', '角度二', '角度三'], guardrails: ['不要报时'] };
-    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', interlude: cfg });
-    expect(p.user).toContain('角度一');
-    expect(p.user).toContain('角度二');
-    expect(p.user).toContain('角度三');
-    expect(p.user).toContain('不要报时');
-  });
-
-  it('缺省时用内置灵感与护栏兜底', () => {
-    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', interlude: undefined });
-    expect(p.user).toContain('可选的起头灵感');
-    expect(p.user).toContain('报时式开场');
-  });
-
-  it('护栏对所有段落类型都生效（含 station_id / reply）', () => {
-    const station = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
-    const reply = buildSegmentPrompt({
-      ...ctx,
-      kind: 'reply',
-      replyTo: [{ id: 'm1', body: '嗨' }],
-    });
-    expect(station.user).toContain('起头护栏');
-    expect(reply.user).toContain('起头护栏');
-  });
-
-  it('station_id / reply 不塞「可选灵感」池（仅长串场 interlude/topic 用）', () => {
-    const station = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
-    const reply = buildSegmentPrompt({
-      ...ctx,
-      kind: 'reply',
-      replyTo: [{ id: 'm1', body: '嗨' }],
-    });
-    expect(station.user).not.toContain('可选的起头灵感');
-    expect(reply.user).not.toContain('可选的起头灵感');
-  });
-
-  it('有记忆时通过记忆段落呈现（而非额外强制起头角度）', () => {
+  it('近期口播作为对话史出现在曲目信息之后', () => {
     const p = buildSegmentPrompt({
       ...ctx,
-      kind: 'interlude',
-      memories: [{ kind: 'meme', text: '「暖色调」成了节目内部梗', importance: 0.6 }],
+      recentSpeech: ['Last Call 这名字也太直白了。', '灯还亮着。'],
     });
-    expect(p.user).toContain('内部梗');
+    expect(p.user).toContain('Last Call 这名字也太直白了。');
+    expect(p.user).toContain('灯还亮着。');
+    expect(p.user.indexOf('你刚才说')).toBeGreaterThan(p.user.indexOf('《月光小径》'));
+  });
+
+  it('没有近期口播时不出现「你刚才说」', () => {
+    const p = buildSegmentPrompt({ ...ctx, recentSpeech: [] });
+    expect(p.user).not.toContain('你刚才说');
+  });
+
+  it('世界书条目注入正文；空则整段不出现', () => {
+    const withLore = buildSegmentPrompt({
+      ...ctx,
+      lore: [{ content: '格莱德市霓虹酒吧。' }],
+    });
+    const without = buildSegmentPrompt({ ...ctx, lore: [] });
+    expect(withLore.user).toContain('格莱德市霓虹酒吧。');
+    expect(withLore.user).toContain('手边的世界书');
+    expect(without.user).not.toContain('手边的世界书');
+  });
+
+  it('示例口播出现在 user 里', () => {
+    const p = buildSegmentPrompt({
+      ...ctx,
+      speechExamples: 'Last Call 这名字也太直白了。',
+    });
+    expect(p.user).toContain('口吻样本');
+  });
+
+  it('时段不放在 user 第一行', () => {
+    const p = buildSegmentPrompt(ctx);
+    const first = p.user.split('\n')[0] ?? '';
+    expect(first).not.toContain('时段背景');
+    expect(p.user).toContain('周三');
+  });
+
+  it('最后一句是接着说，不是请播一段小品', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.user).toContain('接着说就好');
+    expect(p.user).not.toContain('请播一段');
   });
 });

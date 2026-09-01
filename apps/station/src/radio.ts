@@ -1,8 +1,6 @@
 /**
- * 电台组装核心：把 core 的纯逻辑接到真实世界。
- * 引擎出意图事件 → 这里执行（选曲、生成、广播）。
- * 生成管线：plan-segment → 上下文构建 → LLM → TTS → onSegmentReady；
- * 任一环失败即按沉默保底（ER-001~003）静默丢弃，音乐照常。
+ * 电台组装：把 core 接到真实世界（HTTP / WS / 文件）。
+ * 节目引擎出意图 → 段落生产产出语音 → 这里广播与入库。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,11 +22,10 @@ import type {
   TtsClient,
 } from '@ambient-radio/core';
 import {
-  buildSegmentPrompt,
   createEngine,
+  createProgrammeMemory,
   createScheduler,
-  getDayPartContext,
-  selectTopMemories,
+  createSegmentProducer,
 } from '@ambient-radio/core';
 import type { ServerEvent, StationState } from '@ambient-radio/shared';
 import type { ServerType } from '@hono/node-server';
@@ -101,6 +98,32 @@ export function createRadio(deps: RadioDeps) {
     config: deps.schedulerConfig,
     rng: Math.random,
   });
+  const programmeMemory = createProgrammeMemory({
+    config: deps.memoryConfig,
+    list: () => deps.store.listMemories(),
+    touch: (id, at) => deps.store.touchMemory(id, at),
+    insert: (rows) => deps.store.insertMemories(rows),
+    nextId: () => randomUUID(),
+  });
+  const producer = createSegmentProducer({
+    llm: deps.llm,
+    tts: deps.tts,
+    persona: deps.persona,
+    stationName: deps.stationName,
+    hostName: deps.hostName,
+    interlude: deps.interludeConfig,
+    retrieveMemories: (now) => programmeMemory.retrieve(now),
+    tracks,
+    view: () => {
+      const now = clock.now();
+      const snap = engine.getSnapshot(now);
+      return {
+        now,
+        currentTrack: snap.trackId ? (trackById.get(snap.trackId) ?? null) : null,
+        recentTracks: snap.recentTracks,
+      };
+    },
+  });
 
   const wss = new WebSocketServer({ noServer: true });
 
@@ -131,6 +154,7 @@ export function createRadio(deps: RadioDeps) {
       durationMs: snap.trackDurationMs,
       positionMs: snap.positionMs,
       hostTalking: snap.hostTalking,
+      hostSegmentId: snap.hostSegmentId,
       serverTime: now,
     };
   }
@@ -161,107 +185,46 @@ export function createRadio(deps: RadioDeps) {
     });
   }
 
-  /** 生成管线：plan-segment → LLM → TTS → ready；失败静默丢弃（沉默保底） */
-  /** 点歌匹配：query 与曲库标题/风格模糊匹配，返回第一命中（P2） */
-  function matchTrack(query: string): Track | null {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    const exact = tracks.find((t) => t.title.toLowerCase() === q);
-    if (exact) return exact;
-    // token 拆分：'220暖色调' → 匹配标题含任一 token 的
-    const tokens = q.split(/[\s，,。.!！？?、/]+/).filter((s) => s.length > 0);
-    for (const token of tokens) {
-      const hit = tracks.find((t) => t.title.toLowerCase().includes(token));
-      if (hit) return hit;
-    }
-    // 风格名匹配
-    return tracks.find((t) => t.styles.some((s) => q.includes(s.toLowerCase()))) ?? null;
-  }
-
-  async function generateSegment(plan: {
+  async function produceAndReady(plan: {
     id: string;
     kind: SegmentKind;
     replyTo?: Array<{ id: string; body: string }>;
     ackTitle?: string;
   }): Promise<void> {
-    try {
-      const snap = engine.getSnapshot(clock.now());
-      // L1 记忆检索（P3，FR-071/072）：把最值得延续的节目历史带进 prompt
-      const memories = selectTopMemories(deps.store.listMemories(), clock.now(), deps.memoryConfig);
-      const prompt = buildSegmentPrompt({
-        kind: plan.kind,
-        persona: deps.persona,
-        stationName: deps.stationName,
-        hostName: deps.hostName,
-        dayPart: getDayPartContext(new Date(clock.now())),
-        currentTrack: snap.trackId ? (trackById.get(snap.trackId) ?? null) : null,
-        recentTracks: snap.recentTracks,
-        replyTo: plan.replyTo,
-        ackTitle: plan.ackTitle,
-        interlude: deps.interludeConfig,
-        openerSeed: Math.random(),
-        memories: memories.map((m) => ({
-          kind: m.kind,
-          text: m.text,
-          importance: m.importance,
-        })),
-      });
-      const draft = await deps.llm.generateSegment(prompt);
-      // 点歌意图（FR-062）：LLM 从留言提取 query → 匹配曲库 → 受理则安排 request_ack
-      let songTrackId: string | null = null;
-      if (plan.kind === 'reply' && draft.songRequest?.query) {
-        const hit = matchTrack(draft.songRequest.query);
-        if (hit) {
-          songTrackId = hit.id;
-          engine.onRequestAck(hit.title);
-          console.log(
-            `[radio] 🎵 点歌受理：《${hit.title}》（${hit.styles.join('/')}）→ 预告后插播`,
-          );
-        } else {
-          console.log(
-            `[radio] 🎵 点歌未匹配曲库：${draft.songRequest.query}（婉拒由文案自然带出）`,
-          );
-        }
-      }
-      const speech = await deps.tts.synthesize(draft.text);
-      voiceSegments.set(plan.id, {
-        id: plan.id,
-        kind: plan.kind,
-        text: draft.text,
-        audioPath: speech.filePath,
-        durationMs: speech.durationMs,
-        startedAt: 0,
-        songTrackId,
-      });
-      engine.onSegmentReady(plan.id, speech.durationMs);
-      console.log(
-        `[radio] 💬 ${plan.kind}（${(speech.durationMs / 1000).toFixed(1)}s${speech.cached ? '，缓存命中' : ''}）：${draft.text.slice(0, 40)}${draft.text.length > 40 ? '…' : ''}`,
-      );
-    } catch (err) {
-      console.warn(
-        `[radio] 段落生成失败（沉默保底，ER-001~003）：${err instanceof Error ? err.message : String(err)}`,
-      );
+    const produced = await producer.produce(plan);
+    if (!produced) {
+      console.warn('[radio] 段落生成失败（沉默保底，ER-001~003）');
       engine.onSegmentFailed(plan.id);
+      return;
     }
+    if (produced.songTrackId) {
+      const hit = trackById.get(produced.songTrackId);
+      if (hit) {
+        engine.onRequestAck(hit.title);
+        console.log(`[radio] 🎵 点歌受理：《${hit.title}》（${hit.styles.join('/')}）→ 预告后插播`);
+      }
+    }
+    voiceSegments.set(plan.id, {
+      id: produced.id,
+      kind: produced.kind,
+      text: produced.text,
+      audioPath: produced.audioPath,
+      durationMs: produced.durationMs,
+      startedAt: 0,
+      songTrackId: produced.songTrackId,
+    });
+    engine.onSegmentReady(produced.id, produced.durationMs);
+    console.log(
+      `[radio] 💬 ${produced.kind}（${(produced.durationMs / 1000).toFixed(1)}s${produced.cached ? '，缓存命中' : ''}）：${produced.text.slice(0, 40)}${produced.text.length > 40 ? '…' : ''}`,
+    );
   }
 
-  /** L1 记忆策展（P3）：LLM 判断是否值得记 + 匿名化 → 入库。失败静默（宁可漏记不可乱记） */
+  /** L1 记忆策展（P3）：播出后提取值得保留的节目事实。失败静默。 */
   async function extractAndStoreMemories(seg: VoiceSegment): Promise<void> {
     try {
       const extracted = await deps.llm.extractMemories(seg.text);
+      programmeMemory.ingest(extracted, clock.now());
       if (extracted.length === 0) return;
-      const now = clock.now();
-      deps.store.insertMemories(
-        extracted.map((m) => ({
-          id: randomUUID(),
-          kind: m.kind,
-          text: m.text,
-          importance: m.importance,
-          createdAt: now,
-          lastUsedAt: null,
-          status: 'active' as const,
-        })),
-      );
       console.log(
         `[radio] 🧠 记忆 ${extracted.length} 条：${extracted.map((m) => `[${m.kind}] ${m.text.slice(0, 24)}`).join('；')}`,
       );
@@ -280,7 +243,7 @@ export function createRadio(deps: RadioDeps) {
           break;
         }
         case 'plan-segment': {
-          void generateSegment({
+          void produceAndReady({
             id: event.id,
             kind: event.kind,
             replyTo: event.replyTo,
@@ -422,6 +385,9 @@ export function createRadio(deps: RadioDeps) {
         deps.store.endPlay(unfinished.id, now);
       }
       startTrack(now);
+    }
+    for (const msg of deps.store.listActiveMessages(now)) {
+      engine.onMessage({ id: msg.id, body: msg.body, receivedAt: msg.receivedAt });
     }
     tickTimer = setInterval(() => {
       const tickNow = clock.now();

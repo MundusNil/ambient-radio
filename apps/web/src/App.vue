@@ -2,7 +2,7 @@
 // 收音机面板：调频进入（D5）—— 开台即跳进正在进行的节目。
 // 控制只有开台/关台 + 总音量（FR-001）；无进度条、无切歌、无回放（PRD §8.2）。
 
-import type { ServerEvent, StationState } from '@ambient-radio/shared';
+import { planTuneIn, type ServerEvent, type StationState } from '@ambient-radio/shared';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   calibrate,
@@ -45,15 +45,22 @@ async function refreshState(): Promise<void> {
   state.value = s;
 }
 
+function applyTuneIn(s: StationState): void {
+  const plan = planTuneIn(s);
+  if (plan.trackId) void audio.play(plan.trackId, plan.startedAt, clockOffset);
+  if (plan.speechSegmentId) {
+    void audio.playSpeech(plan.speechSegmentId);
+    hostTalking.value = true;
+  }
+}
+
 function handleEvent(event: ServerEvent): void {
   if (event.type === 'off-air') {
     offAir.value = true;
     audio.suspend();
   } else if (event.type === 'sync') {
     state.value = event.state;
-    if (live.value && event.state.trackId) {
-      void audio.play(event.state.trackId, event.state.startedAt, clockOffset);
-    }
+    if (live.value) applyTuneIn(event.state);
   } else if (event.type === 'track') {
     state.value = {
       trackId: event.trackId,
@@ -62,13 +69,13 @@ function handleEvent(event: ServerEvent): void {
       durationMs: event.durationMs,
       positionMs: Math.max(0, Date.now() + clockOffset - event.startedAt),
       hostTalking: false,
+      hostSegmentId: null,
       serverTime: Date.now() + clockOffset,
     };
     if (live.value) {
       void audio.play(event.trackId, event.startedAt, clockOffset);
     }
   } else if (event.type === 'voice') {
-    // 梦可开口：音乐平滑压低（ducking 在 audio.playSpeech 内完成）
     if (live.value) {
       void audio.playSpeech(event.segmentId);
       hostTalking.value = true;
@@ -78,7 +85,6 @@ function handleEvent(event: ServerEvent): void {
       }, event.durationMs + 200);
     }
   } else if (event.type === 'received') {
-    // 回执：把 pending 标记替换为服务器 id（保持不变性）
     const pending = messages.value.find((m) => m.id.startsWith('pending-'));
     if (pending) pending.id = event.id;
   }
@@ -89,9 +95,7 @@ async function openStation(): Promise<void> {
   try {
     await audio.unlock(info.value?.audio.ducking);
     await refreshState();
-    if (state.value?.trackId) {
-      await audio.play(state.value.trackId, state.value.startedAt, clockOffset);
-    }
+    if (state.value) applyTuneIn(state.value);
     ws = connectWs(handleEvent);
     live.value = true;
   } finally {

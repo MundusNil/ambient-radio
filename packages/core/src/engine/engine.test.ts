@@ -179,9 +179,9 @@ describe('engine · 串场节奏（FR-031）', () => {
     if (plan?.type !== 'plan-segment') throw new Error('expect plan event');
     e.onSegmentReady(plan.id, 15_000);
     e.tick(301_000); // play
-    // 下一次 plan 应在 plan@300 + 300 = 600s
-    expect(e.tick(599_999)).toEqual([]);
-    const again = e.tick(600_000);
+    // due=600s 落在 900s 曲的后 40%，60%（540s）处提前规划
+    expect(e.tick(539_999)).toEqual([]);
+    const again = e.tick(540_000);
     expect(again).toHaveLength(1);
     expect(again[0]).toMatchObject({ type: 'plan-segment', kind: 'interlude' });
   });
@@ -329,5 +329,44 @@ describe('engine · 留言 SLA 不受 minTalkGap 约束（P2 回归）', () => {
     const events = e.tick(365_000);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
+  });
+});
+
+describe('engine · 60% 预取（边界段落来不及则放弃）', () => {
+  const prefetchCfg = {
+    ...DEFAULT_ENGINE_CONFIG,
+    talkIntervalMs: [80_000, 80_000] as [number, number],
+    topicChance: 0,
+    speakWhenAlone: true,
+    minTalkGapMs: 0,
+  };
+
+  it('开口落在本曲后 40% 时，60% 处提前规划', () => {
+    const e = createEngine({ config: prefetchCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 100_000), 0);
+    expect(e.tick(59_000)).toEqual([]);
+    const events = e.tick(60_000);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'interlude' });
+  });
+
+  it('曲目结束时仍未就绪的段落被丢弃（沉默保底）', () => {
+    const early = {
+      ...prefetchCfg,
+      talkIntervalMs: [40_000, 40_000] as [number, number],
+      pendingTimeoutMs: 120_000,
+    };
+    const e = createEngine({ config: early, rng: fixed(0) });
+    e.onTrackStarted(T('a', 100_000), 0);
+    const [plan] = e.tick(40_000);
+    expect(plan).toMatchObject({ type: 'plan-segment' });
+    expect(e.tick(100_000)).toEqual([{ type: 'track-ended', trackId: 'a' }]);
+    e.onTrackStarted(T('b', 100_000), 100_000);
+    const again = e.tick(101_000);
+    expect(again).toHaveLength(1);
+    expect(again[0]).toMatchObject({ type: 'plan-segment', kind: 'interlude' });
+    if (again[0]?.type === 'plan-segment' && plan?.type === 'plan-segment') {
+      expect(again[0].id).not.toBe(plan.id);
+    }
   });
 });

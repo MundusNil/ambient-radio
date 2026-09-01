@@ -35,13 +35,42 @@ describe('buildSegmentPrompt', () => {
     expect(p.user).toContain('欢迎回来');
   });
 
-  it('串场与主题仍区分意图，但不设字数下限（FR-032/033）', () => {
+  it('各段落都不再设字数上限或下限（长度自由，FR-032/033）', () => {
     const interlude = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
     const topic = buildSegmentPrompt({ ...ctx, kind: 'topic' });
+    const stationId = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
     expect(interlude.user).toContain('常规串场');
-    expect(interlude.user).not.toContain('40~90 字');
     expect(topic.user).toContain('小主题');
-    expect(topic.user).toContain('200~450 字');
+    for (const p of [interlude, topic, stationId]) {
+      expect(p.user).not.toContain('40~90 字');
+      expect(p.user).not.toContain('200~450 字');
+      expect(p.user).not.toContain('15~35 字');
+    }
+    expect(interlude.user).toContain('三五个字也行');
+    expect(topic.user).toContain('几十字到几百字都行');
+  });
+
+  it('要求一次把一件事说完，不留半句给下次（避免说一半停半分钟）', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.system).toContain('一件事一次说完');
+    expect(p.system).toContain('不要把话说到一半停住');
+    expect(p.user).toContain('说完这一次想说的，再停');
+  });
+
+  it('逐句韵律：system 要求每句给出 speed / emotion / pause', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.system).toContain('"lines"');
+    expect(p.system).toContain('speed');
+    expect(p.system).toContain('emotion');
+    expect(p.system).toContain('pause');
+    expect(p.system).toContain('happy');
+    expect(p.system).toContain('不要写 <#0.5#> 这类标记');
+  });
+
+  it('近期口播是参照物，不是要接着半句说下去', () => {
+    const p = buildSegmentPrompt({ ...ctx, recentSpeech: ['灯还亮着。'] });
+    expect(p.user).toContain('你刚才说过');
+    expect(p.user).toContain('不是让你从半截句子续下去');
   });
 
   it('换曲间隙没有曲目信息时不出现《》', () => {
@@ -100,7 +129,7 @@ describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
 describe('buildSegmentPrompt · 酒馆式装配', () => {
   it('system 主指令短，不含起头灵感立法', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.system).toContain('自然地接上刚才的话');
+    expect(p.system).toContain('把你想说的那件事从头说到尾');
     expect(p.system).not.toContain('开场千变万化');
     expect(p.user).not.toContain('可选的起头灵感');
     expect(p.user).not.toContain('起头护栏');
@@ -137,9 +166,10 @@ describe('buildSegmentPrompt · 酒馆式装配', () => {
     expect(p.user).toContain('周三');
   });
 
-  it('最后一句是接着说，不是请播一段小品', () => {
+  it('收尾指令是「说完再停」，不是「请播一段」', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.user).toContain('接着说就好');
+    expect(p.user).toContain('说完这一次想说的，再停');
     expect(p.user).not.toContain('请播一段');
+    expect(p.user).not.toContain('接着说就好');
   });
 });

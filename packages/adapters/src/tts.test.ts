@@ -1,8 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMiniMaxTts, createTts } from './tts';
+import { ffmpegPath } from './ffmpeg-bin';
+import { createMiniMaxTts, createTts, renderPartText } from './tts';
 
 // ffprobe 需要真实音频文件，单元测试用假数据跑不通；mock 掉，只验证 TTS 逻辑。
 vi.mock('./ffprobe', () => ({
@@ -19,11 +21,33 @@ type FetchCall = { url: string; headers: Record<string, string>; body: unknown }
 /** MiniMax t2a_v2 请求体形状（只声明本测试要断言的字段） */
 type MiniMaxRequestBody = {
   model: string;
+  text: string;
   stream: boolean;
   output_format: string;
-  voice_setting: { voice_id: string; speed: number };
+  voice_setting: { voice_id: string; speed: number; emotion?: string };
   audio_setting: { format: string };
 };
+
+/** 拼接需要真实 mp3：现生成一段 0.3s 静音，没有 ffmpeg 的机器上跳过相关用例 */
+let silentAudioHex: string | null = null;
+function realMp3Hex(): string | null {
+  if (silentAudioHex) return silentAudioHex;
+  const dir = mkdtempSync(join(tmpdir(), 'ambient-mp3-'));
+  const file = join(dir, 'silence.mp3');
+  try {
+    execFileSync(
+      ffmpegPath(),
+      ['-y', '-f', 'lavfi', '-i', 'anullsrc=r=32000:cl=mono', '-t', '0.3', '-b:a', '128k', file],
+      { stdio: 'ignore' },
+    );
+    silentAudioHex = readFileSync(file).toString('hex');
+  } catch {
+    silentAudioHex = null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return silentAudioHex;
+}
 
 function makeFetch(overrides: {
   status?: number;
@@ -204,6 +228,131 @@ describe('createMiniMaxTts', () => {
       fetchImpl,
     });
     await expect(tts.synthesize('x')).rejects.toThrow();
+  });
+});
+
+describe('renderPartText', () => {
+  it('句间停顿写成 <#秒#> 标记', () => {
+    const text = renderPartText({
+      lines: [
+        { text: '第一句。', pauseAfterSec: 0.6 },
+        { text: '第二句。', pauseAfterSec: 0.4 },
+        { text: '第三句。' },
+      ],
+    });
+    expect(text).toBe('第一句。<#0.6#>第二句。<#0.4#>第三句。');
+  });
+
+  it('段尾不留停顿标记（MiniMax 要求标记夹在两段可发音文本之间）', () => {
+    const text = renderPartText({
+      lines: [
+        { text: '前一句。', pauseAfterSec: 0.5 },
+        { text: '最后一句。', pauseAfterSec: 0.8 },
+      ],
+    });
+    expect(text).toBe('前一句。<#0.5#>最后一句。');
+  });
+});
+
+describe('createMiniMaxTts · 逐句韵律', () => {
+  const audio = realMp3Hex();
+
+  it.skipIf(!audio)('情绪与语速逐片下发，相邻同韵律合并成一次请求', async () => {
+    const { fetchImpl, calls } = makeFetch({ audio: audio as string });
+    const tts = createMiniMaxTts({
+      apiKey: 'k',
+      groupId: 'g',
+      voice: 'female-tianmei',
+      speed: 0.9,
+      cacheDir: CACHE,
+      loudnorm: false,
+      fetchImpl,
+    });
+
+    await tts.synthesize([
+      { text: '刚下班吧。', speed: 1.1, emotion: 'happy', pauseAfterSec: 0.6 },
+      { text: '先别急着找遥控器。', speed: 1.1, emotion: 'happy' },
+      { text: '然后它就凉了。', emotion: 'sad' },
+    ]);
+
+    expect(calls).toHaveLength(2);
+    const first = calls[0]?.body as MiniMaxRequestBody;
+    expect(first.text).toBe('刚下班吧。<#0.6#>先别急着找遥控器。');
+    expect(first.voice_setting.speed).toBe(1.1);
+    expect(first.voice_setting.emotion).toBe('happy');
+    const second = calls[1]?.body as MiniMaxRequestBody;
+    expect(second.text).toBe('然后它就凉了。');
+    // 没给语速的句子用配置里的基准语速
+    expect(second.voice_setting.speed).toBe(0.9);
+    expect(second.voice_setting.emotion).toBe('sad');
+  });
+
+  it.skipIf(!audio)('整段一种语气时只发一次请求（接缝最少）', async () => {
+    const { fetchImpl, calls } = makeFetch({ audio: audio as string });
+    const tts = createMiniMaxTts({
+      apiKey: 'k',
+      groupId: 'g',
+      voice: 'female-tianmei',
+      speed: 0.9,
+      cacheDir: CACHE,
+      loudnorm: false,
+      fetchImpl,
+    });
+
+    await tts.synthesize([
+      { text: '第一句。', pauseAfterSec: 0.4 },
+      { text: '第二句。', pauseAfterSec: 0.3 },
+      { text: '第三句。' },
+    ]);
+
+    expect(calls).toHaveLength(1);
+    const only = calls[0]?.body as MiniMaxRequestBody;
+    expect(only.text).toBe('第一句。<#0.4#>第二句。<#0.3#>第三句。');
+    expect(only.voice_setting.emotion).toBeUndefined();
+  });
+
+  it.skipIf(!audio)('分片拼接后只留下成品文件，中间产物清理干净', async () => {
+    const { fetchImpl } = makeFetch({ audio: audio as string });
+    const tts = createMiniMaxTts({
+      apiKey: 'k',
+      groupId: 'g',
+      voice: 'female-tianmei',
+      cacheDir: CACHE,
+      loudnorm: false,
+      fetchImpl,
+    });
+
+    const speech = await tts.synthesize([
+      { text: '一句。', emotion: 'happy' },
+      { text: '另一句。', emotion: 'sad' },
+    ]);
+
+    expect(speech.cached).toBe(false);
+    const leftovers = readdirSync(CACHE).filter((f) => !f.endsWith('.mp3'));
+    expect(leftovers).toEqual([]);
+    expect(readdirSync(CACHE)).toContain(
+      `${(speech.filePath.split(/[\\/]/).pop() ?? '').replace('.mp3', '')}.mp3`,
+    );
+  });
+
+  it.skipIf(!audio)('韵律相同但文本相同才命中缓存', async () => {
+    const { fetchImpl, calls } = makeFetch({ audio: audio as string });
+    const opts = {
+      apiKey: 'k',
+      groupId: 'g',
+      voice: 'female-tianmei',
+      cacheDir: CACHE,
+      loudnorm: false,
+      fetchImpl,
+    };
+    const tts = createMiniMaxTts(opts);
+    const lines = [{ text: '同一句。', emotion: 'happy' }];
+    await tts.synthesize(lines);
+    await tts.synthesize(lines);
+    // 换个情绪 = 另一个音频，不该命中缓存
+    await tts.synthesize([{ text: '同一句。', emotion: 'sad' }]);
+
+    expect(calls).toHaveLength(2);
   });
 });
 

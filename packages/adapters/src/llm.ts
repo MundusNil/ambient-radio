@@ -1,6 +1,17 @@
 /** OpenAI 兼容 LLM 客户端（D7：DeepSeek / Qwen / GLM / Kimi 通吃，换供应商=改配置） */
-import type { LlmClient, MemoryExtraction, SegmentDraft, SegmentPrompt } from '@ambient-radio/core';
-import { MEMORY_EXTRACTION_SYSTEM, parseMemoryExtraction } from '@ambient-radio/core';
+import type {
+  LlmClient,
+  MemoryExtraction,
+  SegmentDraft,
+  SegmentPrompt,
+  SpeechLine,
+} from '@ambient-radio/core';
+import {
+  joinLinesText,
+  MEMORY_EXTRACTION_SYSTEM,
+  normalizeSpeechLines,
+  parseMemoryExtraction,
+} from '@ambient-radio/core';
 
 export interface OpenAiCompatibleOptions {
   baseUrl: string;
@@ -12,26 +23,75 @@ export interface OpenAiCompatibleOptions {
   retries?: number;
   /** 开启模型内置联网搜索（方舟 web_search；豆包等支持，DeepSeek 不支持） */
   webSearch?: boolean;
+  /** 单次生成的最大 token 数（长篇口播需要放宽） */
+  maxTokens?: number;
 }
 
-/** P2 点歌意图的结构化输出契约（LLM 按此格式返回 JSON） */
-interface SongRequestJson {
-  text: string;
-  songRequest?: { query: string } | null;
+/** P2 点歌意图 + 逐句韵律的结构化输出契约（LLM 按此格式返回 JSON） */
+interface SegmentDraftJson {
+  text?: string;
+  lines?: Array<{
+    text?: string;
+    speed?: number;
+    emotion?: string;
+    /** 说完这句后的停顿秒数（模型常用 pause；pauseAfterSec 兼容） */
+    pause?: number;
+    pauseAfterSec?: number;
+  }>;
+  songRequest?: { query?: string } | null;
 }
 
 /**
- * 解析 LLM 输出：优先 JSON（结构化点歌意图），
+ * 解析逐句韵律：模型给 [{text,speed,emotion,pause}]，干净的交给 core 规范化。
+ * 全部行都没有文本时返回 undefined（调用方回退到整段文本）。
+ */
+function toSpeechLines(raw: unknown): SpeechLine[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const lines: SpeechLine[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      lines.push({ text: item });
+      continue;
+    }
+    if (!item || typeof item !== 'object') continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o.text !== 'string' || o.text.trim() === '') continue;
+    const pause = typeof o.pause === 'number' ? o.pause : o.pauseAfterSec;
+    lines.push({
+      text: o.text,
+      ...(typeof o.speed === 'number' ? { speed: o.speed } : {}),
+      ...(typeof o.emotion === 'string' ? { emotion: o.emotion } : {}),
+      ...(typeof pause === 'number' ? { pauseAfterSec: pause } : {}),
+    });
+  }
+  if (lines.length === 0) return undefined;
+  return normalizeSpeechLines(lines);
+}
+
+/**
+ * 解析 LLM 输出：优先 JSON（逐句韵律 + 结构化点歌意图），
  * 解析失败回退纯文本（文本即回复内容，songRequest 缺省）。
  */
 function parseDraft(raw: string): SegmentDraft {
   const trimmed = raw.trim();
   try {
-    const parsed = JSON.parse(trimmed) as SongRequestJson;
+    const parsed = JSON.parse(trimmed) as SegmentDraftJson;
+    const lines = toSpeechLines(parsed.lines);
+    const songRequest =
+      typeof parsed.songRequest?.query === 'string' && parsed.songRequest.query.trim() !== ''
+        ? { query: parsed.songRequest.query.trim() }
+        : null;
+    if (lines && lines.length > 0) {
+      return {
+        text: joinLinesText(lines),
+        lines,
+        songRequest,
+      };
+    }
     if (typeof parsed.text === 'string' && parsed.text.trim().length > 0) {
       return {
         text: parsed.text.trim(),
-        songRequest: parsed.songRequest ?? null,
+        songRequest,
       };
     }
   } catch {
@@ -49,6 +109,8 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
     timeoutMs = 30_000,
     retries = 1,
     webSearch = false,
+    // 长篇口播：几百字 + JSON 结构，1200 会被截断成半句话
+    maxTokens = 2500,
   } = options;
 
   async function chatOnce(
@@ -64,7 +126,7 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
         model,
         messages,
         temperature,
-        max_tokens: 1200,
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         ...(webSearch ? { web_search: { enable: true } } : {}),
       }),

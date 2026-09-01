@@ -1,10 +1,17 @@
 /** LLM 端口：core 不知道协议细节；实现见 adapters/llm（D7：OpenAI 兼容通吃） */
 
 import type { SegmentPrompt } from './context';
+import type { SpeechLine } from './speech';
 import type { MemoryKind } from './types';
 
 export interface SegmentDraft {
+  /** 完整播报文本（入库 / 记忆提取 / 日志用） */
   text: string;
+  /**
+   * 逐句韵律（语速 / 情绪 / 句间停顿），交给 TTS 消费。
+   * 缺省表示整段一种语气；为空数组时调用方回退到 text。
+   */
+  lines?: SpeechLine[];
   /** P2 点歌：留言含点歌意图时，LLM 提取的点歌请求（受理与否由组装层匹配曲库后决定） */
   songRequest?: { query: string } | null;
 }

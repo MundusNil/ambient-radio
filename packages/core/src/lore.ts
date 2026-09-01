@@ -49,17 +49,18 @@ export function parseTracksMarkdown(markdown: string): LoreEntry[] {
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 export function parseLoreMarkdown(style: string, markdown: string): LoreEntry {
-  const match = markdown.match(FRONTMATTER);
+  const trimmed = markdown.replace(/^\uFEFF/, '').trim();
+  const match = trimmed.match(FRONTMATTER);
   if (!match) {
     return {
       keys: [style],
-      content: markdown.trim(),
+      content: trimmed,
       constantForStyles: [style],
     };
   }
 
   const yaml = match[1] ?? '';
-  const body = markdown.slice(match[0].length);
+  const body = trimmed.slice(match[0].length);
   let keys = [style];
   for (const raw of yaml.split(/\r?\n/)) {
     const line = raw.trim();

@@ -83,4 +83,18 @@ keys: Jill, Dana, VA-11
       constantForStyles: ['va11halla'],
     });
   });
+
+  it('leading blank line + frontmatter still parses keys and body', () => {
+    const markdown = `
+---
+keys: Jill, Dana, VA-11
+---
+正文
+`;
+    expect(parseLoreMarkdown('va11halla', markdown)).toEqual({
+      keys: ['Jill', 'Dana', 'VA-11'],
+      content: '正文',
+      constantForStyles: ['va11halla'],
+    });
+  });
 });

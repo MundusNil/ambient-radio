@@ -18,6 +18,11 @@ data/
 # 曲库音频：目录结构进 git，音频文件不进
 config/library/*/*
 !config/library/*/.gitkeep
+!config/library/*/lore.md
+!config/library/*/tracks.md
+
+# 本地 git worktree
+.worktrees/
 
 # 本地 FFmpeg 二进制：体积大，不入库
 # 缺失时自动回退系统 PATH 上的 ffmpeg/ffprobe

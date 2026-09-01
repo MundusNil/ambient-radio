@@ -115,7 +115,10 @@ export function createRadio(deps: RadioDeps) {
     loreEntries: deps.loreEntries,
     retrieveRecentSpeech: () => {
       const segs = deps.store.listRecentAiredSegments(4);
-      return segs.slice().reverse().map((s) => s.text);
+      return segs
+        .slice()
+        .reverse()
+        .map((s) => s.text);
     },
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,

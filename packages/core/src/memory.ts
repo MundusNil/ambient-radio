@@ -3,6 +3,7 @@
  * 打分 = importance × 时间衰减 × 最近引用加权；
  * 纯逻辑零 IO：记忆数据与时钟由调用方传入。
  */
+import type { MemoryExtraction } from './llm';
 import type { MemoryKind } from './types';
 
 export interface MemoryConfig {
@@ -55,4 +56,81 @@ export function selectTopMemories(
     .sort((a, b) => b.score - a.score)
     .slice(0, config.retrievalLimit)
     .map((x) => x.memory);
+}
+
+export interface ProgrammeMemory {
+  retrieve(now: number): MemoryRecordL1[];
+  ingest(extracts: MemoryExtraction[], now: number): void;
+}
+
+export function createProgrammeMemory(options: {
+  config: MemoryConfig;
+  list: () => MemoryRecordL1[];
+  touch: (id: string, at: number) => void;
+  insert: (rows: MemoryRecordL1[]) => void;
+  nextId: () => string;
+}): ProgrammeMemory {
+  return {
+    retrieve(now: number): MemoryRecordL1[] {
+      const selected = selectTopMemories(options.list(), now, options.config);
+      for (const m of selected) {
+        options.touch(m.id, now);
+      }
+      return selected;
+    },
+    ingest(extracts: MemoryExtraction[], now: number): void {
+      if (extracts.length === 0) return;
+      options.insert(
+        extracts.map((m) => ({
+          id: options.nextId(),
+          kind: m.kind,
+          text: m.text,
+          importance: m.importance,
+          createdAt: now,
+          lastUsedAt: null,
+          status: 'active' as const,
+        })),
+      );
+    },
+  };
+}
+
+/** P3 记忆提取的系统提示：策展规则 + 匿名硬约束（FR-080~085） */
+export const MEMORY_EXTRACTION_SYSTEM = `你是电台节目的记忆策展人。阅读下面这段主播播报，判断是否有值得长期保留的节目事实。
+
+只记录与节目连续性有关的（满足任一即可记）：
+- topic：节目谈过的可延续话题（如听众表现出对某类音乐/时段的偏好，且主播回应了）
+- promise：主播做出的承诺或未完成的话题（如「明天晚上这个点」「下次放那首」「以后多聊」）
+- meme：节目内部梗
+- event：重要的节目事件（点歌受理、特别的互动等）
+
+硬性规则：
+- 只输出 JSON：{"memories": [{"kind": "topic|promise|meme|event", "text": "一句话", "importance": 0~1}]}
+- 没有值得记的就输出 {"memories": []}
+- 绝对禁止：用户名、听众身份信息、原句引用、个人生活细节（FR-082）
+- 绝对禁止：编造未播出的事实（FR-074）
+- 最多 3 条；text 用一句中立、匿名的节目事实描述`;
+
+/** 解析记忆提取；失败/无内容 → 空数组（策展：宁可漏记不可乱记） */
+export function parseMemoryExtraction(raw: string): MemoryExtraction[] {
+  try {
+    const parsed = JSON.parse(raw.trim()) as {
+      memories?: Array<{ kind?: string; text?: string; importance?: number }>;
+    };
+    if (!Array.isArray(parsed.memories)) return [];
+    return parsed.memories
+      .filter(
+        (m): m is { kind: MemoryExtraction['kind']; text: string; importance?: number } =>
+          typeof m.text === 'string' &&
+          m.text.trim().length > 0 &&
+          (m.kind === 'topic' || m.kind === 'promise' || m.kind === 'meme' || m.kind === 'event'),
+      )
+      .map((m) => ({
+        kind: m.kind,
+        text: m.text.trim(),
+        importance: Math.min(1, Math.max(0, typeof m.importance === 'number' ? m.importance : 0.5)),
+      }));
+  } catch {
+    return [];
+  }
 }

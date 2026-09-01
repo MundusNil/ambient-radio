@@ -12,7 +12,24 @@ export interface StationState {
   durationMs: number;
   positionMs: number;
   hostTalking: boolean;
+  /** 进行中的段落；调频进入时据此接上语音 */
+  hostSegmentId: string | null;
   serverTime: number; // epoch ms，用于时钟对齐
+}
+
+/** 调频进入计划：音乐 seek + 可选接上正在播出的段落 */
+export interface TuneInPlan {
+  trackId: string | null;
+  startedAt: number;
+  speechSegmentId: string | null;
+}
+
+export function planTuneIn(state: StationState): TuneInPlan {
+  return {
+    trackId: state.trackId,
+    startedAt: state.startedAt,
+    speechSegmentId: state.hostTalking ? state.hostSegmentId : null,
+  };
 }
 
 /** WS 下行事件 */

@@ -1,5 +1,6 @@
 /** OpenAI 兼容 LLM 客户端（D7：DeepSeek / Qwen / GLM / Kimi 通吃，换供应商=改配置） */
 import type { LlmClient, MemoryExtraction, SegmentDraft, SegmentPrompt } from '@ambient-radio/core';
+import { MEMORY_EXTRACTION_SYSTEM, parseMemoryExtraction } from '@ambient-radio/core';
 
 export interface OpenAiCompatibleOptions {
   baseUrl: string;
@@ -10,22 +11,6 @@ export interface OpenAiCompatibleOptions {
   /** 网络失败时的重试次数 */
   retries?: number;
 }
-
-/** P3 记忆提取的系统提示：策展规则 + 匿名硬约束（FR-080~085） */
-const EXTRACTION_SYSTEM = `你是电台节目的记忆策展人。阅读下面这段主播播报，判断是否有值得长期保留的节目事实。
-
-只记录与节目连续性有关的（满足任一即可记）：
-- topic：节目谈过的可延续话题（如听众表现出对某类音乐/时段的偏好，且主播回应了）
-- promise：主播做出的承诺或未完成的话题（如「明天晚上这个点」「下次放那首」「以后多聊」）
-- meme：节目内部梗
-- event：重要的节目事件（点歌受理、特别的互动等）
-
-硬性规则：
-- 只输出 JSON：{"memories": [{"kind": "topic|promise|meme|event", "text": "一句话", "importance": 0~1}]}
-- 没有值得记的就输出 {"memories": []}
-- 绝对禁止：用户名、听众身份信息、原句引用、个人生活细节（FR-082）
-- 绝对禁止：编造未播出的事实（FR-074）
-- 最多 3 条；text 用一句中立、匿名的节目事实描述`;
 
 /** P2 点歌意图的结构化输出契约（LLM 按此格式返回 JSON） */
 interface SongRequestJson {
@@ -51,33 +36,6 @@ function parseDraft(raw: string): SegmentDraft {
     // 不是 JSON：按纯文本处理
   }
   return { text: trimmed, songRequest: null };
-}
-
-/** P3 记忆提取的输出契约：{ memories: [{ kind, text, importance }] } */
-interface MemoryExtractionJson {
-  memories?: Array<{ kind?: string; text?: string; importance?: number }>;
-}
-
-/** 解析记忆提取；失败/无内容 → 空数组（策展：宁可漏记不可乱记） */
-function parseExtraction(raw: string): MemoryExtraction[] {
-  try {
-    const parsed = JSON.parse(raw.trim()) as MemoryExtractionJson;
-    if (!Array.isArray(parsed.memories)) return [];
-    return parsed.memories
-      .filter(
-        (m): m is { kind: MemoryExtraction['kind']; text: string; importance?: number } =>
-          typeof m.text === 'string' &&
-          m.text.trim().length > 0 &&
-          (m.kind === 'topic' || m.kind === 'promise' || m.kind === 'meme' || m.kind === 'event'),
-      )
-      .map((m) => ({
-        kind: m.kind,
-        text: m.text.trim(),
-        importance: Math.min(1, Math.max(0, typeof m.importance === 'number' ? m.importance : 0.5)),
-      }));
-  } catch {
-    return [];
-  }
 }
 
 export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): LlmClient {
@@ -135,12 +93,12 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
 
     async extractMemories(segmentText: string): Promise<MemoryExtraction[]> {
       const messages = [
-        { role: 'system' as const, content: EXTRACTION_SYSTEM },
+        { role: 'system' as const, content: MEMORY_EXTRACTION_SYSTEM },
         { role: 'user' as const, content: segmentText.slice(0, 2000) },
       ];
       try {
         const text = await chatOnce(messages);
-        return parseExtraction(text);
+        return parseMemoryExtraction(text);
       } catch {
         // 提取失败不阻塞节目（策展失败 = 本次不记，安全）
         return [];

@@ -3,6 +3,8 @@ export * from './context';
 export * from './engine/engine';
 export * from './llm';
 export * from './memory';
+export * from './producer';
+export * from './request';
 export * from './scheduler/scheduler';
 export * from './time';
 export * from './tts';

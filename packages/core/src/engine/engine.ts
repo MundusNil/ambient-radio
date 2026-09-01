@@ -151,6 +151,10 @@ export function createEngine(options: EngineOptions): Engine {
     if (pending && now - pending.plannedAt > config.pendingTimeoutMs) {
       pending = null;
     }
+    // 60% 预取：曲目结束时仍未就绪 → 放弃该段落（来不及则沉默保底）
+    if (trackEndedThisTick && pending && pending.state === 'planned') {
+      pending = null;
+    }
 
     // 规划：优先级——request_ack > 留言 force > 留言 prefer > 台呼 > next_talk_due
     // minTalkGap 只约束主动串场；留言/点歌是 SLA 驱动，不受间隔限制
@@ -223,7 +227,12 @@ export function createEngine(options: EngineOptions): Engine {
         stationIdDue = false;
         nextTalkDue = now + sampleInterval();
         events.push({ type: 'plan-segment', id: pending.id, kind: 'station_id' });
-      } else if (now >= nextTalkDue) {
+      } else if (
+        currentTrack !== null &&
+        (now >= nextTalkDue ||
+          (now >= trackStartedAt + currentTrack.durationMs * 0.6 &&
+            nextTalkDue <= trackStartedAt + currentTrack.durationMs))
+      ) {
         const topicEligible = now - lastTopicAt >= config.topicCooldownMs;
         const kind: SegmentKind =
           topicEligible && rng() < config.topicChance ? 'topic' : 'interlude';

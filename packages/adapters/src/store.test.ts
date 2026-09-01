@@ -133,13 +133,14 @@ describe('store · messages（P2，FR-091/092）', () => {
     expect(active[0]).toMatchObject({ body: '你好' });
   });
 
-  it('过期留言被清理（FR-092：7 天自动删除）', () => {
+  it('回复播出后留言被删除（FR-051：重启不重播）', () => {
     const store = createStore(':memory:');
-    store.insertMessage({ id: 'old', body: '旧留言', receivedAt: 1_000_000, expiresAt: 2_000_000 });
-    store.insertMessage({ id: 'new', body: '新留言', receivedAt: 2_500_000, expiresAt: 9_500_000 });
-    expect(store.deleteExpiredMessages(2_100_000)).toBe(1);
-    const active = store.listActiveMessages(3_000_000);
-    expect(active.map((m) => m.id)).toEqual(['new']);
+    store.insertMessage({ id: 'm1', body: '第一条', receivedAt: 1_000_000, expiresAt: 9_000_000 });
+    store.insertMessage({ id: 'm2', body: '第二条', receivedAt: 1_100_000, expiresAt: 9_000_000 });
+    store.insertMessage({ id: 'm3', body: '未回复', receivedAt: 1_200_000, expiresAt: 9_000_000 });
+    store.deleteMessages(['m1', 'm2']);
+    const active = store.listActiveMessages(1_500_000);
+    expect(active.map((m) => m.id)).toEqual(['m3']);
   });
 });
 

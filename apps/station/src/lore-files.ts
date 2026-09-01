@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseLoreMarkdown, parseTracksMarkdown, type LoreEntry } from '@ambient-radio/core';
+import { type LoreEntry, parseLoreMarkdown, parseTracksMarkdown } from '@ambient-radio/core';
 
 export function loadLibraryLore(libraryRoot: string): LoreEntry[] {
   const entries: LoreEntry[] = [];

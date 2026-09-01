@@ -4,8 +4,8 @@
  */
 import { buildSegmentPrompt } from './context';
 import type { LlmClient } from './llm';
-import { selectLoreEntries } from './lore';
 import type { LoreEntry } from './lore';
+import { selectLoreEntries } from './lore';
 import type { MemoryRecordL1 } from './memory';
 import { matchSongRequest } from './request';
 import { getDayPartContext } from './time';

@@ -15,13 +15,6 @@ export interface SchedulerConfig {
   recencyPenaltyHalfLifePlays: number;
 }
 
-export interface InterludeConfig {
-  /** 串场起头可选灵感池：主播可借力，也可完全无视——不强制单一角度（调电台=改配置，不进代码） */
-  seeds: string[];
-  /** 起头护栏（负面清单）：务必遵守的「不要做」——例如不报时开场、不逐首报幕、不反问听众 */
-  guardrails: string[];
-}
-
 export interface EngineConfig {
   /** FR-031：主动串场间隔采样区间（8~12 次/小时） */
   talkIntervalMs: [number, number];
@@ -78,22 +71,6 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   },
   speakWhenAlone: false,
   pendingTimeoutMs: 60_000,
-};
-
-export const DEFAULT_INTERLUDE_CONFIG: InterludeConfig = {
-  seeds: [
-    '从正在放的音乐的感觉起头：它让你联想到什么画面、气味，或此刻的心情。',
-    '说一个轻盈的小观察：窗外的光、杯子里的咖啡、城市深夜的某个声音。',
-    '接上节目里的一个小记忆或内部梗，像老听众都懂的那样轻轻一提。',
-    '就着刚才播过的某首歌，聊一句你的私人感受，不解说、不报幕。',
-    '直接落进此刻的氛围里，几乎不铺垫，像你本来就在自言自语。',
-  ],
-  guardrails: [
-    '不要用「现在是周X的…」这类报时式开场',
-    '不要逐首报幕，也不要预告接下来要放什么',
-    '不要反问听众（例如「你今晚听得开心吗」）',
-    '不要客套套话，也不要念任何前缀、标题或舞台指示',
-  ],
 };
 
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {

@@ -1,0 +1,21 @@
+# Checkout and commit as LF so Windows autocrlf cannot flip the working tree.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp3 binary
+*.flac binary
+*.ogg binary
+*.wav binary
+*.opus binary
+*.m4a binary
+*.exe binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary

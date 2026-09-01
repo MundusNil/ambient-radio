@@ -114,11 +114,8 @@ export function createRadio(deps: RadioDeps) {
     speechExamples: deps.speechExamples,
     loreEntries: deps.loreEntries,
     retrieveRecentSpeech: () => {
-      const segs = deps.store
-        .listSegments()
-        .filter((s) => s.status === 'aired' && s.airedAt !== null && s.text.trim().length > 0);
-      segs.sort((a, b) => (a.airedAt ?? 0) - (b.airedAt ?? 0));
-      return segs.slice(-4).map((s) => s.text);
+      const segs = deps.store.listRecentAiredSegments(4);
+      return segs.slice().reverse().map((s) => s.text);
     },
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,

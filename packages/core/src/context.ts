@@ -30,8 +30,6 @@ export interface SegmentPromptContext {
   memories?: Array<{ kind: MemoryKind; text: string; importance: number }>;
   /** 近期已出口播，按时间从旧到新 */
   recentSpeech?: string[];
-  /** 选中的世界书条目（调用方已筛选；对话式下不再强制注入） */
-  lore?: Array<{ content: string }>;
   /** 口吻样本原文（对话式下不再强制注入） */
   speechExamples?: string;
 }
@@ -59,15 +57,14 @@ const SYSTEM_RULES = `你是梦可，一台 AI 氛围电台的主播，正在直
 
 【你在做什么】
 - 你在一档只有音乐的电台里说话，听众偶尔留言。你按自己的节奏说，像深夜电台主播，也像和一个懂你的朋友聊天。
-- 你现在被允许联网搜索：想聊某个作品、某首歌、某个游戏、某个梗，但记得不确切时，可以先搜一下再开口。不确定又搜不到的，宁可不说。
-- 自然地接上刚才的话（你自己的上一句、听众的留言、正在放的歌）。不需要每段都总结或收尾，半句也可以。
+- 你有联网搜索能力：想聊什么都可以，记不清的、想确认的，搜一下再开口。
+- 自然地接上刚才的话（你自己的上一句、听众的留言、正在放的歌）。想说什么说什么，想停就停，半句也可以。
 
 【输出】
 - 严格 JSON：{"text":"要说的话","songRequest":null}
 - text 会被 TTS 直接播出。不要前缀、标题、舞台指示。普通话口语。
 - songRequest 仅当听众留言明显在点歌时填 {"query":"歌名或风格"}，否则 null。
-- 你是 AI，清楚这一点；不编造自己的现实经历，不编造节目里没发生过的事，不点名听众。
-- 不确定的内容：搜索核实过才说，搜不到或不确定就轻轻带过，绝不当事实播。`;
+`;
 
 export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   const system = SYSTEM_RULES.replace('{PERSONA}', ctx.persona.trim());
@@ -102,10 +99,6 @@ export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   if (ctx.memories && ctx.memories.length > 0) {
     const remembered = ctx.memories.map((m) => `[${m.kind}] ${m.text}`).join('\n');
     lines.push(`你记得的节目历史（只可引用这些真实发生过的事，禁止编造或扩展）：\n${remembered}`);
-  }
-  if (ctx.lore && ctx.lore.length > 0) {
-    const loreText = ctx.lore.map((entry) => entry.content).join('\n');
-    lines.push(`可以聊的背景（用得上再用，不是必须）：\n${loreText}`);
   }
   if (ctx.speechExamples) {
     lines.push(`口吻参考（学语气，不抄内容）：\n${ctx.speechExamples}`);

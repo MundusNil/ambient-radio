@@ -34,7 +34,6 @@ const producerOf = (overrides: { llm?: LlmClient; tts?: TtsClient; tracks?: Trac
     stationName: '梦可电台',
     hostName: '梦可',
     speechExamples: '',
-    loreEntries: [],
     retrieveRecentSpeech: () => [],
     retrieveMemories: () => [],
     tracks: overrides.tracks ?? [track],
@@ -134,14 +133,8 @@ describe('段落生产 · 点歌匹配', () => {
   });
 });
 
-const va11Lore = {
-  keys: ['Jill'],
-  content: '格莱德市霓虹酒吧。',
-  constantForStyles: ['va11halla'],
-};
-
-describe('段落生产 · 对话史与世界书', () => {
-  it('把近期口播和命中的世界书传进 prompt', async () => {
+describe('段落生产 · 对话史', () => {
+  it('把近期口播传进 prompt', async () => {
     let seenUser = '';
     const producer = createSegmentProducer({
       llm: {
@@ -156,7 +149,6 @@ describe('段落生产 · 对话史与世界书', () => {
       stationName: '梦可电台',
       hostName: '梦可',
       speechExamples: 'Last Call 这名字也太直白了。',
-      loreEntries: [va11Lore],
       retrieveMemories: () => [],
       retrieveRecentSpeech: () => ['Last Call 这名字也太直白了。'],
       tracks: [track],
@@ -170,37 +162,5 @@ describe('段落生产 · 对话史与世界书', () => {
     await producer.produce({ id: 'seg-1', kind: 'interlude' });
 
     expect(seenUser).toContain('Last Call 这名字也太直白了。');
-    expect(seenUser).toContain('格莱德市霓虹酒吧。');
-  });
-
-  it('当前是 cafe 但上一句提到 Jill 时仍注入 VA-11 世界书', async () => {
-    let seenUser = '';
-    const producer = createSegmentProducer({
-      llm: {
-        generateSegment: async (prompt) => {
-          seenUser = prompt.user;
-          return { text: '今晚风很轻。', songRequest: null };
-        },
-        extractMemories: async () => [],
-      },
-      tts: ttsOk,
-      persona: PERSONA,
-      stationName: '梦可电台',
-      hostName: '梦可',
-      speechExamples: '',
-      loreEntries: [va11Lore],
-      retrieveMemories: () => [],
-      retrieveRecentSpeech: () => ['Jill 那封信我还记得。'],
-      tracks: [track],
-      view: () => ({
-        now: Date.UTC(2026, 7, 19, 12, 0, 0),
-        currentTrack: track,
-        recentTracks: [],
-      }),
-    });
-
-    await producer.produce({ id: 'seg-cafe', kind: 'interlude' });
-
-    expect(seenUser).toContain('格莱德市霓虹酒吧。');
   });
 });

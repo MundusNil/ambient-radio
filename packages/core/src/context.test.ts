@@ -121,17 +121,6 @@ describe('buildSegmentPrompt · 酒馆式装配', () => {
     expect(p.user).not.toContain('你刚才说');
   });
 
-  it('世界书条目注入正文；空则整段不出现', () => {
-    const withLore = buildSegmentPrompt({
-      ...ctx,
-      lore: [{ content: '格莱德市霓虹酒吧。' }],
-    });
-    const without = buildSegmentPrompt({ ...ctx, lore: [] });
-    expect(withLore.user).toContain('格莱德市霓虹酒吧。');
-    expect(withLore.user).toContain('可以聊的背景');
-    expect(without.user).not.toContain('可以聊的背景');
-  });
-
   it('示例口播出现在 user 里', () => {
     const p = buildSegmentPrompt({
       ...ctx,

@@ -4,7 +4,6 @@
  * 纯逻辑零 IO：persona 内容由调用方传入（组装层读文件）。
  */
 
-import type { InterludeConfig } from './config';
 import type { DayPartContext } from './time';
 import type { MemoryKind, SegmentKind } from './types';
 
@@ -29,8 +28,6 @@ export interface SegmentPromptContext {
   ackTitle?: string;
   /** L1 节目记忆（P3，FR-071/072：基于真实节目经历延续话题） */
   memories?: Array<{ kind: MemoryKind; text: string; importance: number }>;
-  /** 串场配置；本装配不再注入种子/护栏 */
-  interlude?: InterludeConfig;
   /** 近期已出口播，按时间从旧到新 */
   recentSpeech?: string[];
   /** 选中的世界书条目（调用方已筛选） */

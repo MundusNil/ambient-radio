@@ -228,7 +228,7 @@ export function createRadio(deps: RadioDeps) {
     });
     engine.onSegmentReady(produced.id, produced.durationMs);
     console.log(
-      `[radio] 💬 ${produced.kind}（${(produced.durationMs / 1000).toFixed(1)}s${produced.cached ? '，缓存命中' : ''}）：${produced.text.slice(0, 40)}${produced.text.length > 40 ? '…' : ''}`,
+      `[radio] 💬 ${produced.kind}（${(produced.durationMs / 1000).toFixed(1)}s${produced.cached ? '，缓存命中' : ''}）：${produced.text}`,
     );
   }
 
@@ -239,7 +239,7 @@ export function createRadio(deps: RadioDeps) {
       programmeMemory.ingest(extracted, clock.now());
       if (extracted.length === 0) return;
       console.log(
-        `[radio] 🧠 记忆 ${extracted.length} 条：${extracted.map((m) => `[${m.kind}] ${m.text.slice(0, 24)}`).join('；')}`,
+        `[radio] 🧠 记忆 ${extracted.length} 条：${extracted.map((m) => `[${m.kind}] ${m.text}`).join('；')}`,
       );
     } catch (err) {
       console.warn(
@@ -492,7 +492,7 @@ export function createRadio(deps: RadioDeps) {
       });
       engine.onMessage({ id, body: parsed.body.trim(), receivedAt: now });
       ws.send(JSON.stringify({ type: 'received', id }));
-      console.log(`[radio] 💌 留言（${id.slice(0, 8)}）：${parsed.body.trim().slice(0, 40)}`);
+      console.log(`[radio] 💌 留言（${id.slice(0, 8)}）：${parsed.body.trim()}`);
     } catch {
       // 无效消息忽略，事件流不断
     }

@@ -9,7 +9,7 @@ import type { MemoryKind } from './types';
 export interface MemoryConfig {
   /** 上下文最多带入的 L1 记忆条数 */
   retrievalLimit: number;
-  /** 基础衰减半衰期（天）；importance 越高衰减慢（halfLife = base / importance） */
+  /** 基础衰减半衰期（天）；importance 越高衰减慢（halfLife = base × importance²） */
   decayHalfLifeDays: number;
   /** 最近引用加权的半衰期（天）；越近引用分越高 */
   recencyBoostHalfLifeDays: number;
@@ -31,8 +31,8 @@ const DAY_MS = 86_400_000;
 
 export function memoryScore(m: MemoryRecordL1, now: number, config: MemoryConfig): number {
   const ageDays = (now - m.createdAt) / DAY_MS;
-  // importance 越高半衰越长：halfLife = base × importance（0.2 → 衰减快，0.9 → 慢）
-  const halfLifeDays = config.decayHalfLifeDays * Math.max(0.1, m.importance);
+  // importance 越高半衰越长：halfLife = base × importance²（0.2 → 快速淡出，0.9 → 长期保留）
+  const halfLifeDays = config.decayHalfLifeDays * Math.max(0.1, m.importance) ** 2;
   const decay = 2 ** (-ageDays / halfLifeDays);
   let score = m.importance * decay;
   if (m.lastUsedAt !== null) {

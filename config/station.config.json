@@ -21,8 +21,8 @@
   "scheduler": {
     "noRepeatWindowMs": 1800000,
     "styleBaseWeights": {
-      "game-bgm": 1.0,
-      "cafe": 1.0,
+      "game-bgm": 1,
+      "cafe": 1,
       "vocal-soft": 0.6,
       "night-quiet": 0.8,
       "va11halla": 0.9
@@ -85,5 +85,11 @@
   },
   "library": {
     "root": "config/library"
+  },
+  "memory": {
+    "retrievalLimit": 3,
+    "decayHalfLifeDays": 7,
+    "recencyBoostHalfLifeDays": 0.5,
+    "minScore": 0.45
   }
 }

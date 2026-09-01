@@ -10,8 +10,7 @@ import { getDayPartContext } from '@ambient-radio/core';
 import { serve } from '@hono/node-server';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
-import { scanLibrary } from './library';
-import { loadSpeechExamples } from './lore-files';
+import { loadSpeechExamples, scanLibrary } from './library';
 import { findRepoRoot } from './paths';
 import { createRadio } from './radio';
 
@@ -50,15 +49,12 @@ async function main(): Promise<void> {
   }
   const persona = readFileSync(resolve(repoRoot, 'config', 'persona.md'), 'utf-8');
   const speechExamples = loadSpeechExamples(resolve(repoRoot, 'config', 'speech-examples.md'));
-  // 世界书停用（维护者手写易错，改为模型联网搜索核实；loadLibraryLore 保留备用）
-  const loreEntries: never[] = [];
 
   const radio = createRadio({
     stationName: config.station.name,
     hostName: config.station.host,
     persona,
     speechExamples,
-    loreEntries,
     engineConfig: config.engine,
     schedulerConfig: config.scheduler,
     ducking: config.audio.ducking,

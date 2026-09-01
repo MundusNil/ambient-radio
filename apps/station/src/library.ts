@@ -1,5 +1,6 @@
 /** 曲库扫描：config/library/<子风格>/*.mp3 → Track[]（文件夹名即标签，D3） */
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, extname, join, relative } from 'node:path';
 import { probeDurationMs } from '@ambient-radio/adapters';
@@ -47,4 +48,10 @@ export async function scanLibrary(root: string): Promise<Track[]> {
     }
   }
   return tracks;
+}
+
+/** 口吻示例加载：config/speech-examples.md（对话式 prompt 的参考，非强制） */
+export function loadSpeechExamples(path: string): string {
+  if (!existsSync(path)) return '';
+  return readFileSync(path, 'utf-8').trim();
 }

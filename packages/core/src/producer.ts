@@ -4,8 +4,6 @@
  */
 import { buildSegmentPrompt } from './context';
 import type { LlmClient } from './llm';
-import type { LoreEntry } from './lore';
-import { selectLoreEntries } from './lore';
 import type { MemoryRecordL1 } from './memory';
 import { matchSongRequest } from './request';
 import { getDayPartContext } from './time';
@@ -42,7 +40,6 @@ export interface SegmentProducerOptions {
   stationName: string;
   hostName: string;
   speechExamples: string;
-  loreEntries: LoreEntry[];
   retrieveRecentSpeech: () => string[];
   retrieveMemories: (now: number) => MemoryRecordL1[];
   tracks: Track[];
@@ -59,9 +56,6 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
       const view = options.view();
       const memories = options.retrieveMemories(view.now);
       const recentSpeech = options.retrieveRecentSpeech();
-      const styles = view.currentTrack?.styles ?? [];
-      const haystack = [...recentSpeech, view.currentTrack?.title ?? '', ...styles].join('\n');
-      const lore = selectLoreEntries(options.loreEntries, haystack, styles);
       const prompt = buildSegmentPrompt({
         kind: plan.kind,
         persona: options.persona,
@@ -73,7 +67,6 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
         replyTo: plan.replyTo,
         ackTitle: plan.ackTitle,
         recentSpeech,
-        lore,
         speechExamples: options.speechExamples,
         memories: memories.map((m) => ({
           kind: m.kind,

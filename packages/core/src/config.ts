@@ -59,10 +59,10 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
 };
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
-  talkIntervalMs: [5 * 60 * 1000, 8 * 60 * 1000],
+  talkIntervalMs: [150 * 1000, 240 * 1000],
   minTalkGapMs: 90 * 1000,
-  preferReplyMs: 45 * 1000,
-  forceReplyMs: 90 * 1000,
+  preferReplyMs: 20 * 1000,
+  forceReplyMs: 45 * 1000,
   topicCooldownMs: 40 * 60 * 1000,
   topicChance: 0.15,
   nodeWindow: {
@@ -70,7 +70,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
     minBeforeTrackEndMs: 10 * 1000,
   },
   speakWhenAlone: false,
-  pendingTimeoutMs: 60_000,
+  pendingTimeoutMs: 120_000,
 };
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
   retrievalLimit: 3,

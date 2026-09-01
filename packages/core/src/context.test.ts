@@ -138,6 +138,7 @@ describe('buildSegmentPrompt · 酒馆式装配', () => {
       speechExamples: 'Last Call 这名字也太直白了。',
     });
     expect(p.user).toContain('口吻样本');
+    expect(p.user).toContain('Last Call 这名字也太直白了。');
   });
 
   it('时段不放在 user 第一行', () => {

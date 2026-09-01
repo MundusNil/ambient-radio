@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   mkdirSync(outDir, { recursive: true });
 
   console.log('🎙️ TTS 盲听对比（技术设计 §4.6）');
-  console.log('文本：「' + SAMPLE_TEXT.slice(0, 30) + '…」\n');
+  console.log(`文本：「${SAMPLE_TEXT.slice(0, 30)}…」\n`);
 
   for (const candidate of CANDIDATES) {
     const tts = createEdgeTts({

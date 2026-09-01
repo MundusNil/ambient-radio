@@ -54,6 +54,8 @@ interface VoiceSegment {
   startedAt: number;
   /** 点歌受理：request_ack 播出后要插入调度器的曲目（P2） */
   songTrackId: string | null;
+  /** reply 段消耗的留言 id：播出后从库里删除（重启不重播，FR-051） */
+  replyToIds?: string[];
 }
 
 /** 维护者审查台页面（apps/admin/index.html） */
@@ -220,6 +222,7 @@ export function createRadio(deps: RadioDeps) {
       durationMs: produced.durationMs,
       startedAt: 0,
       songTrackId: produced.songTrackId,
+      replyToIds: plan.replyTo?.map((m) => m.id),
     });
     engine.onSegmentReady(produced.id, produced.durationMs);
     console.log(
@@ -267,9 +270,9 @@ export function createRadio(deps: RadioDeps) {
           if (airedSegments.length > AIRED_SEGMENT_LIMIT) {
             airedSegments.shift();
           }
-          // 点歌预告播出后：把受理的歌插入调度器队列（预告先于播歌，FR-064）
-          if (aired.songTrackId) {
-            scheduler.queueTrack(aired.songTrackId);
+          // 回复播出后：消耗的留言从库里删除（FR-051，重启不重播）
+          if (aired.replyToIds && aired.replyToIds.length > 0) {
+            deps.store.deleteMessages(aired.replyToIds);
           }
           // 节目记录（P3 记忆的基础数据；原始文案仅存库，不外泄）
           try {

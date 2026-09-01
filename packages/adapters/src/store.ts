@@ -45,6 +45,8 @@ export interface Store {
   listActiveMessages(now: number): StoredMessage[];
   /** 删除过期留言；返回删除条数 */
   deleteExpiredMessages(now: number): number;
+  /** 删除已回复播出的留言（回复完即删，重启不重播） */
+  deleteMessages(ids: string[]): void;
   /** L1 节目记忆（P3，FR-077：维护者可查看/修正/删除） */
   insertMemories(memories: MemoryRecordL1[]): void;
   listMemories(): MemoryRecordL1[];
@@ -281,6 +283,12 @@ export function createStore(dbPath: string): Store {
     deleteExpiredMessages(now: number): number {
       const result = db.prepare('DELETE FROM messages WHERE expires_at <= ?').run(now);
       return result.changes;
+    },
+
+    deleteMessages(ids: string[]): void {
+      if (ids.length === 0) return;
+      const placeholders = ids.map(() => '?').join(',');
+      db.prepare(`DELETE FROM messages WHERE id IN (${placeholders})`).run(...ids);
     },
 
     insertMemories(memories: MemoryRecordL1[]): void {

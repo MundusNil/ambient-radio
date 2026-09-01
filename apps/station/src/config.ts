@@ -42,6 +42,8 @@ export interface LlmConfig {
   temperature: number;
   /** 模型内置联网搜索（豆包/方舟支持；DeepSeek 不支持） */
   webSearch: boolean;
+  /** 单次请求超时（ms）；推理+搜索模型需要更长 */
+  timeoutMs: number;
 }
 
 /** edge-tts 子配置（免费，D8 默认） */
@@ -132,6 +134,7 @@ export function loadStationConfig(
       apiKeyEnv: 'ARK_API_KEY',
       temperature: 0.8,
       webSearch: true,
+      timeoutMs: 120_000,
       ...raw.llm,
     },
     tts: {

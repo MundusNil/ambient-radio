@@ -71,6 +71,7 @@ async function main(): Promise<void> {
       model: config.llm.model,
       temperature: config.llm.temperature,
       webSearch: config.llm.webSearch,
+      timeoutMs: config.llm.timeoutMs,
     }),
     tts: createTts({
       provider: config.tts.provider,

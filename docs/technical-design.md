@@ -107,7 +107,7 @@ ambient-radio/                     # pnpm workspaces + TypeScript strict
 | 段落类型 | 说明 | 长度约束 |
 |---|---|---|
 | `station_id` | 台呼，非个人化，开台后首个自然节点播出（FR-004/005） | 5~10s |
-| `interlude` | 常规串场 | 10~25s（FR-032）：舒适上限，非常规必须填满（多数约 5~15s） |
+| `interlude` | 常规串场 | 10~25s（FR-032）：舒适上限，并非必须填满（多数约 5~15s） |
 | `topic` | 小主题 | 1~2min（FR-033），冷却 ≥40min |
 | `reply` | 回应留言 | 15~45s |
 | `request_ack` | 点歌受理/婉拒/预告 | 10~20s |

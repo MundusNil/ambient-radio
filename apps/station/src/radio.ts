@@ -76,6 +76,8 @@ export interface RadioDeps {
   engineConfig: EngineConfig;
   schedulerConfig: SchedulerConfig;
   ducking: DuckingConfig;
+  /** 切歌交叠淡变时长（ms）；从配置来，前端据此做平滑过渡 */
+  crossfadeMs: number;
   tracks: Track[];
   libraryRoot: string;
   clock: Clock;
@@ -86,6 +88,8 @@ export interface RadioDeps {
   retentionDays: number;
   /** L1 记忆检索配置（P3） */
   memoryConfig: MemoryConfig;
+  /** 一段口播的字数硬上限（防长篇独白拖垮节目节奏） */
+  maxSegmentChars: number;
 }
 
 export function createRadio(deps: RadioDeps) {
@@ -121,6 +125,7 @@ export function createRadio(deps: RadioDeps) {
     },
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,
+    maxSegmentChars: deps.maxSegmentChars,
     view: () => {
       const now = clock.now();
       const snap = engine.getSnapshot(now);
@@ -313,7 +318,7 @@ export function createRadio(deps: RadioDeps) {
   app.get('/api/config', (c) =>
     c.json({
       station: { name: deps.stationName, host: deps.hostName },
-      audio: { ducking: deps.ducking },
+      audio: { ducking: deps.ducking, crossfadeMs: deps.crossfadeMs },
     }),
   );
 

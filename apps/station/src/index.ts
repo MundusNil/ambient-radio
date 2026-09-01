@@ -58,6 +58,7 @@ async function main(): Promise<void> {
     engineConfig: config.engine,
     schedulerConfig: config.scheduler,
     ducking: config.audio.ducking,
+    crossfadeMs: config.audio.crossfadeMs,
     tracks,
     libraryRoot,
     clock: systemClock,
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
       temperature: config.llm.temperature,
       webSearch: config.llm.webSearch,
       timeoutMs: config.llm.timeoutMs,
+      maxTokens: config.llm.maxTokens,
     }),
     tts: createTts({
       provider: config.tts.provider,
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
     store,
     retentionDays: config.messages.retentionDays,
     memoryConfig: config.memory,
+    maxSegmentChars: config.llm.maxSegmentChars,
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

@@ -66,9 +66,7 @@ if (hasLocalFf) console.log(`  ${OK} ffmpeg（仓库自带）`);
 else if (onPath) console.log(`  ${OK} ffmpeg（系统 PATH）`);
 else blockers.push('缺少 ffprobe/ffmpeg：把两个 exe 放进 tools/ffmpeg/，或安装到系统 PATH');
 
-if (run('python', ['-c', 'import edge_tts']).ok) console.log(`  ${OK} Python + edge-tts`);
-else warnings.push('未检测到 edge-tts，梦可将无法发声。修复：pnpm setup:voice');
-
+// 语音默认走 MiniMax（云端 TTS，无需本地 Python/edge-tts）；如改回 edge-tts 再按需在 .env 配本地环境。
 const envPath = join(ROOT, '.env');
 if (existsSync(envPath)) {
   const envTxt = readFileSync(envPath, 'utf8');

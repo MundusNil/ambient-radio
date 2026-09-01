@@ -14,7 +14,7 @@ interface RawJson {
   engine?: Partial<EngineConfig> & { nodeWindow?: Partial<EngineConfig['nodeWindow']> };
   scheduler?: Partial<SchedulerConfig>;
   memory?: Partial<MemoryConfig>;
-  audio?: { ducking?: Partial<DuckingConfig> };
+  audio?: { ducking?: Partial<DuckingConfig>; crossfadeMs?: number };
   llm?: Partial<LlmConfig>;
   tts?: {
     provider?: 'edge-tts' | 'minimax';
@@ -44,6 +44,10 @@ export interface LlmConfig {
   webSearch: boolean;
   /** 单次请求超时（ms）；推理+搜索模型需要更长 */
   timeoutMs: number;
+  /** 单次生成的 token 上限（长篇口播要放宽，否则会被截断成半句话） */
+  maxTokens: number;
+  /** 一段口播的字数硬上限：长度自由，但不能变成独白 */
+  maxSegmentChars: number;
 }
 
 /** edge-tts 子配置（免费，D8 默认） */
@@ -80,7 +84,7 @@ export interface StationRuntimeConfig {
   station: { name: string; host: string; port: number };
   engine: EngineConfig;
   scheduler: SchedulerConfig;
-  audio: { ducking: DuckingConfig };
+  audio: { ducking: DuckingConfig; crossfadeMs: number };
   llm: LlmConfig;
   tts: TtsConfig;
   messages: { retentionDays: number };
@@ -89,11 +93,14 @@ export interface StationRuntimeConfig {
 }
 
 const DEFAULT_DUCKING: DuckingConfig = {
-  speechGain: 0.22,
+  speechGain: 0.45,
   attackTauMs: 250,
   releaseDelayMs: 1200,
   releaseTauMs: 600,
 };
+
+/** 切歌交叠淡变时长（ms）；0 = 硬切。听感顺滑区间约 150~400 */
+const DEFAULT_CROSSFADE_MS = 250;
 
 export function loadStationConfig(
   path = join(findRepoRoot(), 'config', 'station.config.json'),
@@ -126,6 +133,7 @@ export function loadStationConfig(
     scheduler,
     audio: {
       ducking: { ...DEFAULT_DUCKING, ...raw.audio?.ducking },
+      crossfadeMs: raw.audio?.crossfadeMs ?? DEFAULT_CROSSFADE_MS,
     },
     llm: {
       provider: 'ark',
@@ -135,6 +143,8 @@ export function loadStationConfig(
       temperature: 0.8,
       webSearch: true,
       timeoutMs: 120_000,
+      maxTokens: 2500,
+      maxSegmentChars: 600,
       ...raw.llm,
     },
     tts: {

@@ -11,6 +11,7 @@ import { serve } from '@hono/node-server';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
 import { scanLibrary } from './library';
+import { loadLibraryLore, loadSpeechExamples } from './lore-files';
 import { findRepoRoot } from './paths';
 import { createRadio } from './radio';
 
@@ -48,11 +49,15 @@ async function main(): Promise<void> {
     );
   }
   const persona = readFileSync(resolve(repoRoot, 'config', 'persona.md'), 'utf-8');
+  const speechExamples = loadSpeechExamples(resolve(repoRoot, 'config', 'speech-examples.md'));
+  const loreEntries = loadLibraryLore(libraryRoot);
 
   const radio = createRadio({
     stationName: config.station.name,
     hostName: config.station.host,
     persona,
+    speechExamples,
+    loreEntries,
     engineConfig: config.engine,
     schedulerConfig: config.scheduler,
     ducking: config.audio.ducking,

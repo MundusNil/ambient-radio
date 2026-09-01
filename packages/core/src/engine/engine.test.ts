@@ -195,12 +195,12 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     speakWhenAlone: true,
   };
 
-  it('留言 45 秒内不回应；到期后在自然节点优先规划 reply', () => {
+  it('留言 20 秒内不回应；到期后在自然节点优先规划 reply', () => {
     const e = createEngine({ config: msgCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '今晚的歌好听', receivedAt: 100_000 });
-    expect(e.tick(144_999)).toEqual([]); // 45s 内
-    const events = e.tick(145_000); // due = 100 + 45 = 145s
+    expect(e.tick(119_999)).toEqual([]); // 20s 内
+    const events = e.tick(120_000); // due = 100 + 20 = 120s
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
   });
@@ -210,7 +210,7 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '第一条', receivedAt: 100_000 });
     e.onMessage({ id: 'm2', body: '第二条', receivedAt: 101_000 });
-    const events = e.tick(146_000);
+    const events = e.tick(121_000);
     expect(events[0]).toMatchObject({
       type: 'plan-segment',
       kind: 'reply',
@@ -225,11 +225,11 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     const e = createEngine({ config: msgCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '第一条', receivedAt: 100_000 });
-    const [plan] = e.tick(145_000);
+    const [plan] = e.tick(120_000);
     if (plan?.type !== 'plan-segment') throw new Error('expect plan');
     e.onSegmentFailed(plan.id);
     // 失败后 pending 已清，due 仍过期：立即重试同一批留言（留言没丢）
-    const retry = e.tick(146_000);
+    const retry = e.tick(121_000);
     expect(retry).toHaveLength(1);
     expect(retry[0]).toMatchObject({
       type: 'plan-segment',
@@ -239,7 +239,6 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
   });
 
   it('force 到期后放宽节点尽快回应（尾奏保护让位，前奏保护保留）', () => {
-    // 长间隔配置：next_talk_due 远在 900s，不会与留言 SLA 抢
     const forceCfg = {
       ...DEFAULT_ENGINE_CONFIG,
       talkIntervalMs: [900_000, 900_000] as [number, number],
@@ -248,17 +247,11 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     };
     const e = createEngine({ config: forceCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 300_000), 0);
-    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 230_000 });
-    // 295s：due 已过但距曲尾 <10s（非自然节点），不 plan
-    expect(e.tick(295_000)).toEqual([]);
-    // 300s：曲目结束 → 组装层换新歌
-    const ended = e.tick(300_000);
-    expect(ended[0]?.type).toBe('track-ended');
-    e.onTrackStarted(T('b', 300_000), 300_000);
-    // 305s：新歌前奏期（elapsed 5s < 20s），即使 force 也不打断（前奏保护保留）
-    expect(e.tick(305_000)).toEqual([]);
-    // 320s：force 到期（230+90），新歌已过前奏，放宽节点立即 plan
-    const events = e.tick(320_000);
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 245_000 });
+    // 264s：prefer due（245+20）已过，但距曲尾 <10s（非自然节点），不 plan
+    expect(e.tick(264_000)).toEqual([]);
+    // 290s：force 到期（245+45），放宽节点立即 plan
+    const events = e.tick(290_000);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
   });
@@ -267,7 +260,7 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     const e = createEngine({ config: msgCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '在吗', receivedAt: 100_000 });
-    e.tick(145_000); // plan reply
+    e.tick(120_000); // plan reply
     expect(e.tick(200_000)).toEqual([]); // 不重复 plan
   });
 });

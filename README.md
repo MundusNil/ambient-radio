@@ -85,12 +85,13 @@ pnpm start
 | 区块 | 管什么 |
 | --- | --- |
 | `engine` | 说话频率、留言回应时限、小主题概率、空房间是否开口 |
-| `interlude` | 串场起头可选灵感池（`seeds`）与护栏（`guardrails`） |
+| `config/library/<风格>/lore.md` | 该作品世界书（词典，聊到才进 prompt） |
+| `config/library/<风格>/tracks.md` | 曲名备注 |
+| `config/speech-examples.md` | 口吻样本 |
+| `config/persona.md` | 她是谁（不要写作品百科） |
 | `scheduler` | 各风格权重、时段偏好、防重复窗口 |
 | `audio.ducking` | 说话时音乐压低多少、恢复多快 |
 | `llm` / `tts` | 模型、音色、语速 |
-
-觉得她聊得死板，就往 `interlude.seeds` 里加你想要的起头灵感（写人话，她可用可不用）；要加约束就往 `interlude.guardrails` 里加「不要做」的负面清单。起头完全交给模型自由发挥，不强制单一角度。
 
 ---
 

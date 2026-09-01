@@ -1,9 +1,9 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import {
-  createEdgeTts,
   createOpenAiCompatibleLlm,
   createStore,
+  createTts,
   systemClock,
 } from '@ambient-radio/adapters';
 import { getDayPartContext } from '@ambient-radio/core';
@@ -66,11 +66,13 @@ async function main(): Promise<void> {
       model: config.llm.model,
       temperature: config.llm.temperature,
     }),
-    tts: createEdgeTts({
-      voice: config.tts.voice,
-      rate: config.tts.rate,
+    tts: createTts({
+      provider: config.tts.provider,
+      postProcess: config.tts.postProcess,
       cacheDir: resolve(repoRoot, config.tts.cacheDir),
-      loudnorm: config.tts.postProcess === 'loudnorm',
+      edge: config.tts.edge,
+      minimax: config.tts.minimax,
+      resolveEnv: (name) => process.env[name],
     }),
     store,
     retentionDays: config.messages.retentionDays,

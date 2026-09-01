@@ -95,48 +95,65 @@ describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
   });
 });
 
-describe('buildSegmentPrompt · 串场起头多样性（去掉报时式死板开场）', () => {
-  it('时段背景仍作为参考出现，但没有强制「现在是周X」起头（FR-036）', () => {
-    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', openerSeed: 0.5 });
+describe('buildSegmentPrompt · 串场起头（可选灵感 + 护栏，不强制单一角度）', () => {
+  it('时段背景仍作为参考出现，但不再是「必选其一的起头建议」（FR-036）', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
     expect(p.user).toContain('时段背景');
     expect(p.user).toContain('周三');
-    expect(p.user).toContain('起头建议');
+    // 改为整池「可选灵感」+「护栏」，而不是每次强制挑一条
+    expect(p.user).toContain('可选的起头灵感');
+    expect(p.user).toContain('起头护栏');
   });
 
-  it('同样上下文、不同 seed → 起头角度不同（不再千篇一律）', () => {
-    const a = buildSegmentPrompt({ ...ctx, kind: 'interlude', openerSeed: 0.05 });
-    const b = buildSegmentPrompt({ ...ctx, kind: 'interlude', openerSeed: 0.5 });
-    const c = buildSegmentPrompt({ ...ctx, kind: 'interlude', openerSeed: 0.95 });
-    const set = new Set([a.user, b.user, c.user]);
-    expect(set.size).toBeGreaterThan(1);
+  it('相同输入产出稳定（纯函数，不再依赖随机 seed）', () => {
+    const a = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
+    const b = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
+    expect(a.user).toBe(b.user);
   });
 
-  it('seed < timeOpenerRatio 用「瞥一眼钟」式起头；否则从音乐/观察起头', () => {
-    const cfg = { timeOpenerRatio: 0.2, seeds: ['从音乐感受起头。'] };
-    const time = buildSegmentPrompt({ ...ctx, kind: 'interlude', interlude: cfg, openerSeed: 0.1 });
-    const other = buildSegmentPrompt({
+  it('灵感池整池列出、模型可自由选用（不再 5 选 1）', () => {
+    const cfg = { seeds: ['角度一', '角度二', '角度三'], guardrails: ['不要报时'] };
+    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', interlude: cfg });
+    expect(p.user).toContain('角度一');
+    expect(p.user).toContain('角度二');
+    expect(p.user).toContain('角度三');
+    expect(p.user).toContain('不要报时');
+  });
+
+  it('缺省时用内置灵感与护栏兜底', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', interlude: undefined });
+    expect(p.user).toContain('可选的起头灵感');
+    expect(p.user).toContain('报时式开场');
+  });
+
+  it('护栏对所有段落类型都生效（含 station_id / reply）', () => {
+    const station = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
+    const reply = buildSegmentPrompt({
       ...ctx,
-      kind: 'interlude',
-      interlude: cfg,
-      openerSeed: 0.9,
+      kind: 'reply',
+      replyTo: [{ id: 'm1', body: '嗨' }],
     });
-    expect(time.user).toContain('窗外');
-    expect(other.user).toContain('从音乐感受起头');
-    expect(other.user).not.toContain('窗外');
+    expect(station.user).toContain('起头护栏');
+    expect(reply.user).toContain('起头护栏');
   });
 
-  it('有记忆时额外提供「接记忆」起头角度', () => {
+  it('station_id / reply 不塞「可选灵感」池（仅长串场 interlude/topic 用）', () => {
+    const station = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
+    const reply = buildSegmentPrompt({
+      ...ctx,
+      kind: 'reply',
+      replyTo: [{ id: 'm1', body: '嗨' }],
+    });
+    expect(station.user).not.toContain('可选的起头灵感');
+    expect(reply.user).not.toContain('可选的起头灵感');
+  });
+
+  it('有记忆时通过记忆段落呈现（而非额外强制起头角度）', () => {
     const p = buildSegmentPrompt({
       ...ctx,
       kind: 'interlude',
-      openerSeed: 0.5,
       memories: [{ kind: 'meme', text: '「暖色调」成了节目内部梗', importance: 0.6 }],
     });
     expect(p.user).toContain('内部梗');
-  });
-
-  it('station_id / reply 等段落也保留起头建议（统一去报时）', () => {
-    const p = buildSegmentPrompt({ ...ctx, kind: 'station_id', openerSeed: 0.7 });
-    expect(p.user).toContain('起头建议');
   });
 });

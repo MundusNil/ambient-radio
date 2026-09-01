@@ -62,7 +62,8 @@ const SYSTEM_RULES = `你是梦可，一台 AI 氛围电台的主播，正在直
 - text 会被 TTS 直接播出。不要前缀、标题、舞台指示。普通话口语。
 - songRequest 仅当听众留言明显在点歌时填 {"query":"歌名或风格"}，否则 null。
 - 世界书里写过的设定可以当事实；没写的不要编成事实。
-- 不编造没有发生过的节目，不编「咱们一起过关」，不点名听众。`;
+- 不编造没有发生过的节目，不编「咱们一起过关」，不点名听众。
+- 不要重复聊同一个意象或场景（灯、杯子、雨、夜这些用过就换），不背世界书菜单；宁可说半句就停。`;
 
 export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   const system = SYSTEM_RULES.replace('{PERSONA}', ctx.persona.trim());

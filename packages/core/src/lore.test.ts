@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseLoreMarkdown, parseTracksMarkdown, selectLoreEntries } from './lore';
 import type { LoreEntry } from './lore';
+import { parseLoreMarkdown, parseTracksMarkdown, selectLoreEntries } from './lore';
 
 const va11halla: LoreEntry = {
   keys: ['Jill', 'Dana', 'VA-11'],
@@ -38,14 +38,9 @@ describe('parseTracksMarkdown', () => {
   });
 
   it('skip blank lines and # comments', () => {
-    const markdown = [
-      '',
-      '# comment',
-      'Last Call | 打烊点',
-      '',
-      '# another',
-      'Moon | 月光',
-    ].join('\n');
+    const markdown = ['', '# comment', 'Last Call | 打烊点', '', '# another', 'Moon | 月光'].join(
+      '\n',
+    );
 
     expect(parseTracksMarkdown(markdown)).toEqual([
       {

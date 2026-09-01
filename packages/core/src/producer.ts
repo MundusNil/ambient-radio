@@ -2,9 +2,10 @@
  * 段落生产：plan-segment → 上下文 → LLM → TTS → 可播出段落。
  * 失败返回 null（沉默保底）；节目引擎仍只负责何时开口。
  */
-import type { InterludeConfig } from './config';
 import { buildSegmentPrompt } from './context';
 import type { LlmClient } from './llm';
+import { selectLoreEntries } from './lore';
+import type { LoreEntry } from './lore';
 import type { MemoryRecordL1 } from './memory';
 import { matchSongRequest } from './request';
 import { getDayPartContext } from './time';
@@ -40,7 +41,9 @@ export interface SegmentProducerOptions {
   persona: string;
   stationName: string;
   hostName: string;
-  interlude: InterludeConfig;
+  speechExamples: string;
+  loreEntries: LoreEntry[];
+  retrieveRecentSpeech: () => string[];
   retrieveMemories: (now: number) => MemoryRecordL1[];
   tracks: Track[];
   view: () => StationView;
@@ -55,6 +58,10 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
     try {
       const view = options.view();
       const memories = options.retrieveMemories(view.now);
+      const recentSpeech = options.retrieveRecentSpeech();
+      const styles = view.currentTrack?.styles ?? [];
+      const haystack = [...recentSpeech, view.currentTrack?.title ?? '', ...styles].join('\n');
+      const lore = selectLoreEntries(options.loreEntries, haystack, styles);
       const prompt = buildSegmentPrompt({
         kind: plan.kind,
         persona: options.persona,
@@ -65,7 +72,9 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
         recentTracks: view.recentTracks,
         replyTo: plan.replyTo,
         ackTitle: plan.ackTitle,
-        interlude: options.interlude,
+        recentSpeech,
+        lore,
+        speechExamples: options.speechExamples,
         memories: memories.map((m) => ({
           kind: m.kind,
           text: m.text,

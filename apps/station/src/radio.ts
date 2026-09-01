@@ -111,7 +111,9 @@ export function createRadio(deps: RadioDeps) {
     persona: deps.persona,
     stationName: deps.stationName,
     hostName: deps.hostName,
-    interlude: deps.interludeConfig,
+    speechExamples: '',
+    loreEntries: [],
+    retrieveRecentSpeech: () => [],
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,
     view: () => {

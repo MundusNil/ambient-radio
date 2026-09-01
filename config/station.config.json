@@ -80,7 +80,7 @@
     "minimax": {
       "voice": "Chinese_wenrounvxing",
       "model": "speech-02-hd",
-      "speed": 1.0,
+      "speed": 0.9,
       "apiKeyEnv": "MINIMAX_API_KEY",
       "groupIdEnv": "MINIMAX_GROUP_ID"
     }

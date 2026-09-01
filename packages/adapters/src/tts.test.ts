@@ -257,7 +257,7 @@ describe('renderPartText', () => {
 describe('createMiniMaxTts · 逐句韵律', () => {
   const audio = realMp3Hex();
 
-  it.skipIf(!audio)('情绪与语速逐片下发，相邻同韵律合并成一次请求', async () => {
+  it.skipIf(!audio)('情绪逐片下发、语速固定为基准，相邻同情绪合并成一次请求', async () => {
     const { fetchImpl, calls } = makeFetch({ audio: audio as string });
     const tts = createMiniMaxTts({
       apiKey: 'k',
@@ -278,11 +278,11 @@ describe('createMiniMaxTts · 逐句韵律', () => {
     expect(calls).toHaveLength(2);
     const first = calls[0]?.body as MiniMaxRequestBody;
     expect(first.text).toBe('刚下班吧。<#0.6#>先别急着找遥控器。');
-    expect(first.voice_setting.speed).toBe(1.1);
+    expect(first.voice_setting.speed).toBe(0.9);
     expect(first.voice_setting.emotion).toBe('happy');
     const second = calls[1]?.body as MiniMaxRequestBody;
     expect(second.text).toBe('然后它就凉了。');
-    // 没给语速的句子用配置里的基准语速
+    // 语速固定为配置基准 0.9，模型逐句给的 speed 被忽略
     expect(second.voice_setting.speed).toBe(0.9);
     expect(second.voice_setting.emotion).toBe('sad');
   });

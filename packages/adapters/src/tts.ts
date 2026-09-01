@@ -279,7 +279,7 @@ export function createMiniMaxTts(options: MiniMaxTtsOptions): TtsClient {
     fetchImpl = fetch,
   } = options;
 
-  /** 单片合成：语速与情绪逐片不同，输出格式与鉴权不变 */
+  /** 单片合成：语速固定为配置基准、情绪逐片不同，输出格式与鉴权不变 */
   async function requestPart(
     part: { text: string; speed: number; emotion?: string },
     rawPath: string,
@@ -336,7 +336,7 @@ export function createMiniMaxTts(options: MiniMaxTtsOptions): TtsClient {
       const parts = toSpeechParts(input);
       const rendered = parts.map((p) => ({
         text: renderPartText(p),
-        speed: p.speed ?? speed,
+        speed,
         emotion: p.emotion,
       }));
       const hash = cacheHash([`minimax:${model}:${voice}`, JSON.stringify(rendered)]);

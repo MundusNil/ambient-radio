@@ -10,6 +10,8 @@ export interface OpenAiCompatibleOptions {
   timeoutMs?: number;
   /** 网络失败时的重试次数 */
   retries?: number;
+  /** 开启模型内置联网搜索（方舟 web_search；豆包等支持，DeepSeek 不支持） */
+  webSearch?: boolean;
 }
 
 /** P2 点歌意图的结构化输出契约（LLM 按此格式返回 JSON） */
@@ -39,7 +41,15 @@ function parseDraft(raw: string): SegmentDraft {
 }
 
 export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): LlmClient {
-  const { baseUrl, apiKey, model, temperature = 0.8, timeoutMs = 30_000, retries = 1 } = options;
+  const {
+    baseUrl,
+    apiKey,
+    model,
+    temperature = 0.8,
+    timeoutMs = 30_000,
+    retries = 1,
+    webSearch = false,
+  } = options;
 
   async function chatOnce(
     messages: Array<{ role: 'system' | 'user'; content: string }>,
@@ -54,8 +64,9 @@ export function createOpenAiCompatibleLlm(options: OpenAiCompatibleOptions): Llm
         model,
         messages,
         temperature,
-        max_tokens: 800,
+        max_tokens: 1200,
         response_format: { type: 'json_object' },
+        ...(webSearch ? { web_search: { enable: true } } : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });

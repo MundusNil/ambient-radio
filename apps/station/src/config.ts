@@ -40,6 +40,8 @@ export interface LlmConfig {
   model: string;
   apiKeyEnv: string;
   temperature: number;
+  /** 模型内置联网搜索（豆包/方舟支持；DeepSeek 不支持） */
+  webSearch: boolean;
 }
 
 /** edge-tts 子配置（免费，D8 默认） */
@@ -124,11 +126,12 @@ export function loadStationConfig(
       ducking: { ...DEFAULT_DUCKING, ...raw.audio?.ducking },
     },
     llm: {
-      provider: 'deepseek',
-      baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-chat',
-      apiKeyEnv: 'DEEPSEEK_API_KEY',
+      provider: 'ark',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+      model: 'doubao-seed-2-1-turbo-260628',
+      apiKeyEnv: 'ARK_API_KEY',
       temperature: 0.8,
+      webSearch: true,
       ...raw.llm,
     },
     tts: {

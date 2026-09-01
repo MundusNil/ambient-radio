@@ -11,7 +11,7 @@ import { serve } from '@hono/node-server';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
 import { scanLibrary } from './library';
-import { loadLibraryLore, loadSpeechExamples } from './lore-files';
+import { loadSpeechExamples } from './lore-files';
 import { findRepoRoot } from './paths';
 import { createRadio } from './radio';
 
@@ -50,7 +50,8 @@ async function main(): Promise<void> {
   }
   const persona = readFileSync(resolve(repoRoot, 'config', 'persona.md'), 'utf-8');
   const speechExamples = loadSpeechExamples(resolve(repoRoot, 'config', 'speech-examples.md'));
-  const loreEntries = loadLibraryLore(libraryRoot);
+  // 世界书停用（维护者手写易错，改为模型联网搜索核实；loadLibraryLore 保留备用）
+  const loreEntries: never[] = [];
 
   const radio = createRadio({
     stationName: config.station.name,
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
       apiKey,
       model: config.llm.model,
       temperature: config.llm.temperature,
+      webSearch: config.llm.webSearch,
     }),
     tts: createTts({
       provider: config.tts.provider,

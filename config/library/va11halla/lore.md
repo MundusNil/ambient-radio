@@ -7,6 +7,7 @@ VA-11 Hall-A：格莱德市（Glitch City）一间霓虹酒吧的游戏。梦可
 - Jill 是 VA-11 Hall-A 的调酒师，游戏的大部分时间是她上夜班调酒、听客人把心事放在吧台上
 - Dana 是她的同事兼朋友，两个人合租
 - Kira 是酒吧里的一只猫
+- Jill 自己养了一只黑猫，叫 Fore（全名 Fore Julius Stingray）
 - 名场面：Jill 收到前女友那封信的时候，酒吧里谁都不说话
 - Sex on the Beach 是店里被点得最多的一杯酒，已经成了梗
 - 格莱德没有真正的白天，这首《Every Day is Night》就是这种感觉

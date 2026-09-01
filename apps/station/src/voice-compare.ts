@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   for (const candidate of CANDIDATES) {
     const tts = createEdgeTts({
       voice: candidate.voice,
-      rate: config.tts.rate,
+      rate: config.tts.edge.rate,
       cacheDir: outDir,
       loudnorm: config.tts.postProcess === 'loudnorm',
     });

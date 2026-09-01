@@ -23,7 +23,13 @@ interface RawJson {
   memory?: Partial<MemoryConfig>;
   audio?: { ducking?: Partial<DuckingConfig> };
   llm?: Partial<LlmConfig>;
-  tts?: Partial<TtsConfig>;
+  tts?: {
+    provider?: 'edge-tts' | 'minimax';
+    postProcess?: string;
+    cacheDir?: string;
+    edge?: Partial<EdgeTtsProviderConfig>;
+    minimax?: Partial<MiniMaxTtsProviderConfig>;
+  };
   messages?: { retentionDays?: number };
   library?: { root?: string };
 }
@@ -43,12 +49,34 @@ export interface LlmConfig {
   temperature: number;
 }
 
-export interface TtsConfig {
-  provider: string;
+/** edge-tts 子配置（免费，D8 默认） */
+export interface EdgeTtsProviderConfig {
   voice: string;
+  /** edge-tts rate，如 "-10%" */
   rate: string;
+}
+
+/** minimax 子配置（付费可选，音质更可控） */
+export interface MiniMaxTtsProviderConfig {
+  /** 系统音色 ID，如 Chinese_wenrounvxing（温柔女性） */
+  voice: string;
+  /** 模型，默认 speech-02-hd */
+  model: string;
+  /** 语速 0.5~2.0 */
+  speed: number;
+  /** 存放 API key 的环境变量名 */
+  apiKeyEnv: string;
+  /** 存放 GroupId 的环境变量名 */
+  groupIdEnv: string;
+}
+
+export interface TtsConfig {
+  provider: 'edge-tts' | 'minimax';
+  /** 'loudnorm' 或 'none' */
   postProcess: string;
   cacheDir: string;
+  edge: EdgeTtsProviderConfig;
+  minimax: MiniMaxTtsProviderConfig;
 }
 
 export interface StationRuntimeConfig {
@@ -114,11 +142,22 @@ export function loadStationConfig(
     },
     tts: {
       provider: 'edge-tts',
-      voice: 'zh-CN-XiaoxiaoNeural',
-      rate: '-10%',
       postProcess: 'loudnorm',
       cacheDir: '.cache/tts',
       ...raw.tts,
+      edge: {
+        voice: 'zh-CN-XiaoxuanNeural',
+        rate: '-10%',
+        ...raw.tts?.edge,
+      },
+      minimax: {
+        voice: 'Chinese_wenrounvxing',
+        model: 'speech-02-hd',
+        speed: 1,
+        apiKeyEnv: 'MINIMAX_API_KEY',
+        groupIdEnv: 'MINIMAX_GROUP_ID',
+        ...raw.tts?.minimax,
+      },
     },
     messages: { retentionDays: 7, ...raw.messages },
     library: { root: 'config/library', ...raw.library },

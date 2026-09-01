@@ -72,10 +72,9 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   speakWhenAlone: false,
   pendingTimeoutMs: 60_000,
 };
-
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
-  retrievalLimit: 5,
+  retrievalLimit: 3,
   decayHalfLifeDays: 7,
-  recencyBoostHalfLifeDays: 1,
-  minScore: 0.02,
+  recencyBoostHalfLifeDays: 0.5,
+  minScore: 0.45,
 };

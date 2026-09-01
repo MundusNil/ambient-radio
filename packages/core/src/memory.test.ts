@@ -48,6 +48,18 @@ describe('memoryScore（FR-075 分层遗忘）', () => {
     );
   });
 
+  it('一天前的普通话题淡出，重要承诺保留（FR-075 分层遗忘）', () => {
+    const ordinary = M({ id: 'a', importance: 0.5, createdAt: NOW - DAY, lastUsedAt: NOW - DAY });
+    const promise = M({ id: 'b', importance: 0.9, createdAt: NOW - DAY, lastUsedAt: NOW - DAY });
+    const selected = selectTopMemories([ordinary, promise], NOW, {
+      retrievalLimit: 3,
+      decayHalfLifeDays: 7,
+      recencyBoostHalfLifeDays: 0.5,
+      minScore: 0.45,
+    });
+    expect(selected.map((m) => m.id)).toEqual(['b']);
+  });
+
   it('最近引用过 → 加权提升', () => {
     const unused = M({ id: 'a', createdAt: NOW - 10 * DAY });
     const reused = M({ id: 'b', createdAt: NOW - 10 * DAY, lastUsedAt: NOW - 60_000 });

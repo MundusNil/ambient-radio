@@ -89,6 +89,87 @@ describe('段落生产 · 沉默保底', () => {
   });
 });
 
+describe('段落生产 · 逐句韵律', () => {
+  it('把韵律行交给 TTS，完整文本用于入库与记忆', async () => {
+    const seen: unknown[] = [];
+    const producer = producerOf({
+      llm: {
+        generateSegment: async () => ({
+          text: '刚下班吧。先别急着找遥控器。',
+          lines: [
+            { text: '刚下班吧。', speed: 1.1, emotion: 'happy', pauseAfterSec: 0.6 },
+            { text: '先别急着找遥控器。', speed: 1.1, emotion: 'happy' },
+          ],
+          songRequest: null,
+        }),
+        extractMemories: async () => [],
+      },
+      tts: {
+        synthesize: async (input) => {
+          seen.push(input);
+          return { filePath: '/tmp/seg.mp3', durationMs: 9000, cached: false };
+        },
+      },
+    });
+
+    const produced = await producer.produce({ id: 'seg-prosody', kind: 'interlude' });
+
+    expect(seen[0]).toEqual([
+      { text: '刚下班吧。', speed: 1.1, emotion: 'happy', pauseAfterSec: 0.6 },
+      { text: '先别急着找遥控器。', speed: 1.1, emotion: 'happy' },
+    ]);
+    expect(produced?.text).toBe('刚下班吧。先别急着找遥控器。');
+    expect(produced?.durationMs).toBe(9000);
+  });
+
+  it('模型没给韵律行时退回整段文本', async () => {
+    const seen: unknown[] = [];
+    const producer = producerOf({
+      tts: {
+        synthesize: async (input) => {
+          seen.push(input);
+          return { filePath: '/tmp/seg.mp3', durationMs: 3000, cached: false };
+        },
+      },
+    });
+
+    await producer.produce({ id: 'seg-plain', kind: 'interlude' });
+
+    expect(seen[0]).toBe('今晚风很轻。');
+  });
+
+  it('超过字数硬上限时整句丢弃，不切半句', async () => {
+    const producer = createSegmentProducer({
+      llm: {
+        generateSegment: async () => ({
+          text: '一二三四五。六七八九十。十一十二十三。',
+          lines: [{ text: '一二三四五。' }, { text: '六七八九十。' }, { text: '十一十二十三。' }],
+          songRequest: null,
+        }),
+        extractMemories: async () => [],
+      },
+      tts: ttsOk,
+      persona: PERSONA,
+      stationName: '梦可电台',
+      hostName: '梦可',
+      speechExamples: '',
+      retrieveRecentSpeech: () => [],
+      retrieveMemories: () => [],
+      tracks: [track],
+      maxSegmentChars: 12,
+      view: () => ({
+        now: Date.UTC(2026, 7, 19, 12, 0, 0),
+        currentTrack: track,
+        recentTracks: [],
+      }),
+    });
+
+    const produced = await producer.produce({ id: 'seg-cap', kind: 'topic' });
+
+    expect(produced?.text).toBe('一二三四五。六七八九十。');
+  });
+});
+
 describe('段落生产 · 点歌匹配', () => {
   it('reply 命中曲库标题时带上 songTrackId', async () => {
     const producer = producerOf({

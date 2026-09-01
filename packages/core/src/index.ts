@@ -6,6 +6,7 @@ export * from './memory';
 export * from './producer';
 export * from './request';
 export * from './scheduler/scheduler';
+export * from './speech';
 export * from './time';
 export * from './tts';
 export * from './types';

@@ -9,16 +9,17 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { SynthesizedSpeech, TtsClient } from '@ambient-radio/core';
+import { basename, join } from 'node:path';
+import type { SpeechLine, SpeechPart, SynthesizedSpeech, TtsClient } from '@ambient-radio/core';
+import { groupSpeechParts, joinLinesText, normalizeSpeechLines } from '@ambient-radio/core';
 import { ffmpegPath } from './ffmpeg-bin';
 import { probeDurationMs } from './ffprobe';
 
 const PROC_TIMEOUT_MS = 30_000;
 
-function runProc(cmd: string, args: string[], timeoutMs: number): Promise<void> {
+function runProc(cmd: string, args: string[], timeoutMs: number, cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args);
+    const proc = spawn(cmd, args, cwd ? { cwd } : {});
     let stderr = '';
     proc.stderr.on('data', (d: Buffer) => {
       stderr += d.toString();
@@ -42,24 +43,66 @@ function runProc(cmd: string, args: string[], timeoutMs: number): Promise<void> 
   });
 }
 
-/** 缓存文件名（哈希前 16 位）；把 provider/音色/参数都并进 key，避免跨供应商碰撞 */
+/** 缓存文件名（哈希前 16 位）；把 provider/音色/韵律都并进 key，避免跨供应商碰撞 */
 function cacheHash(parts: string[]): string {
   return createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 16);
 }
 
+/** 入口文本 → 分片：字符串视为一句，韵律行先规范化再合并相邻同语气的句子 */
+function toSpeechParts(input: string | SpeechLine[]): SpeechPart[] {
+  if (typeof input === 'string') return [{ lines: [{ text: input }] }];
+  return groupSpeechParts(normalizeSpeechLines(input));
+}
+
 /**
- * 共享流水线：缓存命中直接返回；否则由 produceRaw 把原始音频写到 rawPath，
- * 再可选 loudnorm 归一，最后落定 finalPath 并 probe 时长。
- * edge 与 minimax 只差「produceRaw 怎么拿到原始音频」，其余步骤完全共用。
+ * 多个分片拼成一条音轨：同参数 mp3 直接 concat copy，不重编码（保音质）。
+ * 用 cwd + 裸文件名绕开 Windows 路径里的反斜杠与空格在 concat 列表里的转义问题。
+ */
+async function concatParts(rawPaths: string[], outPath: string, timeoutMs: number): Promise<void> {
+  const cacheDir = join(rawPaths[0] ?? outPath, '..');
+  const listPath = join(cacheDir, `${basename(outPath, '.mp3')}.concat.txt`);
+  await writeFile(
+    listPath,
+    `${rawPaths.map((p) => `file '${basename(p)}'`).join('\n')}\n`,
+    'utf-8',
+  );
+  try {
+    await runProc(
+      ffmpegPath(),
+      [
+        '-y',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        basename(listPath),
+        '-c',
+        'copy',
+        basename(outPath),
+      ],
+      timeoutMs,
+      cacheDir,
+    );
+  } finally {
+    await rm(listPath, { force: true });
+  }
+}
+
+/**
+ * 共享流水线：缓存命中直接返回；否则由 produceParts 按序写出若干原始分片，
+ * 拼成一条音轨后再做一次 loudnorm 归一（整段音量一致），最后落定 finalPath 并 probe 时长。
+ * edge 与 minimax 只差「分片怎么拿到」，其余步骤完全共用。
  */
 async function runCachedPipeline(params: {
   cacheDir: string;
   hash: string;
   loudnorm: boolean;
   timeoutMs: number;
-  produceRaw: (rawPath: string) => Promise<void>;
+  /** 按序产出分片原始音频（通常 1 片；韵律变化时会是几片） */
+  produceParts: (pathsFor: (count: number) => string[]) => Promise<string[]>;
 }): Promise<SynthesizedSpeech> {
-  const { cacheDir, hash, loudnorm, timeoutMs, produceRaw } = params;
+  const { cacheDir, hash, loudnorm, timeoutMs, produceParts } = params;
   await mkdir(cacheDir, { recursive: true });
   const finalPath = join(cacheDir, `${hash}.mp3`);
 
@@ -71,20 +114,30 @@ async function runCachedPipeline(params: {
     };
   }
 
-  const rawPath = join(cacheDir, `${hash}.raw.mp3`);
-  await produceRaw(rawPath);
+  const rawPaths = await produceParts((count) =>
+    Array.from({ length: count }, (_, i) => join(cacheDir, `${hash}.p${i}.raw.mp3`)),
+  );
+  if (rawPaths.length === 0) throw new Error('TTS 未产出任何音频分片');
+
+  const joinedPath = join(cacheDir, `${hash}.joint.mp3`);
+  if (rawPaths.length === 1) {
+    await rename(rawPaths[0] as string, joinedPath);
+  } else {
+    await concatParts(rawPaths, joinedPath, timeoutMs);
+    await Promise.all(rawPaths.map((p) => rm(p, { force: true })));
+  }
 
   if (loudnorm) {
     const normPath = join(cacheDir, `${hash}.norm.mp3`);
     await runProc(
       ffmpegPath(),
-      ['-y', '-i', rawPath, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-q:a', '2', normPath],
+      ['-y', '-i', joinedPath, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-q:a', '2', normPath],
       timeoutMs,
     );
-    await rm(rawPath, { force: true });
+    await rm(joinedPath, { force: true });
     await rename(normPath, finalPath);
   } else {
-    await rename(rawPath, finalPath);
+    await rename(joinedPath, finalPath);
   }
 
   return {
@@ -112,15 +165,19 @@ export function createEdgeTts(options: EdgeTtsOptions): TtsClient {
   const { voice, rate, cacheDir, loudnorm = true, timeoutMs = PROC_TIMEOUT_MS } = options;
 
   return {
-    synthesize(text: string): Promise<SynthesizedSpeech> {
+    synthesize(input: string | SpeechLine[]): Promise<SynthesizedSpeech> {
+      // edge-tts 不支持逐句情绪/停顿：降级为整段文本，韵律标注忽略（不报错）
+      const text = typeof input === 'string' ? input : joinLinesText(normalizeSpeechLines(input));
       const hash = cacheHash([`edge:${voice}`, rate, text]);
       return runCachedPipeline({
         cacheDir,
         hash,
         loudnorm,
         timeoutMs,
-        produceRaw: (rawPath) =>
-          runProc(
+        produceParts: async (pathsFor) => {
+          const [rawPath] = pathsFor(1);
+          if (!rawPath) throw new Error('edge-tts 未拿到输出路径');
+          await runProc(
             'python',
             [
               '-m',
@@ -134,7 +191,9 @@ export function createEdgeTts(options: EdgeTtsOptions): TtsClient {
               rawPath,
             ],
             timeoutMs,
-          ),
+          );
+          return [rawPath];
+        },
       });
     },
   };
@@ -167,6 +226,43 @@ export interface MiniMaxTtsOptions {
   fetchImpl?: typeof fetch;
 }
 
+/** 分片并发上限：长口播可能有 5~6 片，全串行会吃掉段落超时预算 */
+const PART_CONCURRENCY = 3;
+
+/** 限并发地跑完所有分片（失败即整段放弃，由组装层沉默保底） */
+async function mapLimit<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        await fn(items[index] as T, index);
+      }
+    }),
+  );
+}
+
+/**
+ * 渲染一次请求要念的文本：句间停顿写成 MiniMax 的 `<#秒数#>` 标记。
+ * 只在「句与句之间」插——标记必须落在两段可发音文本中间，句尾和开头都不合法；
+ * 分片边界上的那一次停顿因此会被丢掉（换情绪本身就是一个气口，不算损失）。
+ * 导出仅为单测可见（adapters/index 不对外暴露）。
+ */
+export function renderPartText(part: SpeechPart): string {
+  return part.lines
+    .map((line, i) =>
+      i < part.lines.length - 1 && line.pauseAfterSec
+        ? `${line.text}<#${line.pauseAfterSec}#>`
+        : line.text,
+    )
+    .join('');
+}
+
 export function createMiniMaxTts(options: MiniMaxTtsOptions): TtsClient {
   const {
     apiKey,
@@ -183,53 +279,80 @@ export function createMiniMaxTts(options: MiniMaxTtsOptions): TtsClient {
     fetchImpl = fetch,
   } = options;
 
+  /** 单片合成：语速与情绪逐片不同，输出格式与鉴权不变 */
+  async function requestPart(
+    part: { text: string; speed: number; emotion?: string },
+    rawPath: string,
+  ): Promise<void> {
+    const sep = baseUrl.includes('?') ? '&' : '?';
+    const url = `${baseUrl}${sep}GroupId=${encodeURIComponent(groupId)}`;
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        text: part.text,
+        stream: false,
+        output_format: 'hex',
+        voice_setting: {
+          voice_id: voice,
+          speed: part.speed,
+          vol,
+          pitch,
+          ...(part.emotion ? { emotion: part.emotion } : {}),
+        },
+        audio_setting: {
+          sample_rate: 32000,
+          bitrate: 128_000,
+          format: 'mp3',
+          channel: 1,
+        },
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`MiniMax TTS HTTP ${res.status}: ${body.slice(0, 300)}`);
+    }
+    const data = (await res.json()) as {
+      base_resp?: { status_code?: number; status_msg?: string };
+      data?: { audio?: string } | null;
+    };
+    if (data.base_resp?.status_code !== 0) {
+      throw new Error(`MiniMax TTS 失败：${data.base_resp?.status_msg ?? '未知错误'}`);
+    }
+    const audioHex = data.data?.audio;
+    if (!audioHex) throw new Error('MiniMax TTS 返回空音频');
+    // 文档明确 output_format=hex 时 data.audio 为 hex 编码（非 base64）
+    await writeFile(rawPath, Buffer.from(audioHex, 'hex'));
+  }
+
   return {
-    async synthesize(text: string): Promise<SynthesizedSpeech> {
-      const hash = cacheHash([`minimax:${model}:${voice}`, String(speed), text]);
+    async synthesize(input: string | SpeechLine[]): Promise<SynthesizedSpeech> {
+      // 相邻同语气的句子合并成一次请求：接缝更少，也更省
+      const parts = toSpeechParts(input);
+      const rendered = parts.map((p) => ({
+        text: renderPartText(p),
+        speed: p.speed ?? speed,
+        emotion: p.emotion,
+      }));
+      const hash = cacheHash([`minimax:${model}:${voice}`, JSON.stringify(rendered)]);
       return runCachedPipeline({
         cacheDir,
         hash,
         loudnorm,
         timeoutMs,
-        produceRaw: async (rawPath) => {
-          const sep = baseUrl.includes('?') ? '&' : '?';
-          const url = `${baseUrl}${sep}GroupId=${encodeURIComponent(groupId)}`;
-          const res = await fetchImpl(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model,
-              text,
-              stream: false,
-              output_format: 'hex',
-              voice_setting: { voice_id: voice, speed, vol, pitch },
-              audio_setting: {
-                sample_rate: 32000,
-                bitrate: 128_000,
-                format: 'mp3',
-                channel: 1,
-              },
-            }),
-            signal: AbortSignal.timeout(timeoutMs),
+        produceParts: async (pathsFor) => {
+          const paths = pathsFor(rendered.length);
+          await mapLimit(rendered, PART_CONCURRENCY, async (part, i) => {
+            const out = paths[i];
+            if (!out) throw new Error('MiniMax 分片参数缺失');
+            await requestPart(part, out);
           });
-          if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            throw new Error(`MiniMax TTS HTTP ${res.status}: ${body.slice(0, 300)}`);
-          }
-          const data = (await res.json()) as {
-            base_resp?: { status_code?: number; status_msg?: string };
-            data?: { audio?: string } | null;
-          };
-          if (data.base_resp?.status_code !== 0) {
-            throw new Error(`MiniMax TTS 失败：${data.base_resp?.status_msg ?? '未知错误'}`);
-          }
-          const audioHex = data.data?.audio;
-          if (!audioHex) throw new Error('MiniMax TTS 返回空音频');
-          // 文档明确 output_format=hex 时 data.audio 为 hex 编码（非 base64）
-          await writeFile(rawPath, Buffer.from(audioHex, 'hex'));
+          return paths;
         },
       });
     },

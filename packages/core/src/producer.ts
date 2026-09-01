@@ -6,6 +6,7 @@ import { buildSegmentPrompt } from './context';
 import type { LlmClient } from './llm';
 import type { MemoryRecordL1 } from './memory';
 import { matchSongRequest } from './request';
+import { joinLinesText, normalizeSpeechLines } from './speech';
 import { getDayPartContext } from './time';
 import type { TtsClient } from './tts';
 import type { SegmentKind, Track } from './types';
@@ -44,6 +45,8 @@ export interface SegmentProducerOptions {
   retrieveMemories: (now: number) => MemoryRecordL1[];
   tracks: Track[];
   view: () => StationView;
+  /** 整段口播的字数硬上限（防长篇独白拖垮节奏） */
+  maxSegmentChars?: number;
 }
 
 export interface SegmentProducer {
@@ -79,11 +82,16 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
       if (plan.kind === 'reply' && draft.songRequest?.query) {
         songTrackId = matchSongRequest(options.tracks, draft.songRequest.query)?.id ?? null;
       }
-      const speech = await options.tts.synthesize(draft.text);
+      // 韵律行（语速/情绪/停顿）优先；模型没给或全空时退回整段文本
+      const lines = normalizeSpeechLines(draft.lines ?? [], {
+        maxChars: options.maxSegmentChars ?? Number.POSITIVE_INFINITY,
+      });
+      const speech = await options.tts.synthesize(lines.length > 0 ? lines : draft.text);
+      const text = lines.length > 0 ? joinLinesText(lines) : draft.text;
       return {
         id: plan.id,
         kind: plan.kind,
-        text: draft.text,
+        text,
         audioPath: speech.filePath,
         durationMs: speech.durationMs,
         cached: speech.cached,

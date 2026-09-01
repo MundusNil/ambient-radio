@@ -57,10 +57,10 @@ describe('buildSegmentPrompt', () => {
     expect(p.user).toContain('说完这一次想说的，再停');
   });
 
-  it('逐句韵律：system 要求每句给出 speed / emotion / pause', () => {
+  it('逐句韵律：system 要求每句给出 emotion / pause，不再要求 speed（语速系统固定）', () => {
     const p = buildSegmentPrompt(ctx);
     expect(p.system).toContain('"lines"');
-    expect(p.system).toContain('speed');
+    expect(p.system).not.toContain('speed');
     expect(p.system).toContain('emotion');
     expect(p.system).toContain('pause');
     expect(p.system).toContain('happy');

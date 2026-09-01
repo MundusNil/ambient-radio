@@ -42,8 +42,8 @@ interface SegmentDraftJson {
 }
 
 /**
- * 解析逐句韵律：模型给 [{text,speed,emotion,pause}]，干净的交给 core 规范化。
- * 全部行都没有文本时返回 undefined（调用方回退到整段文本）。
+ * 解析逐句韵律：模型给 [{text,emotion,pause}]，语速由系统固定（config）不再解析，
+ * 干净的交给 core 规范化。全部行都没有文本时返回 undefined（调用方回退到整段文本）。
  */
 function toSpeechLines(raw: unknown): SpeechLine[] | undefined {
   if (!Array.isArray(raw)) return undefined;

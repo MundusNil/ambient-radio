@@ -1,10 +1,27 @@
 :root {
   color-scheme: dark;
-  --fg: #e9e4d8;
-  --fg-dim: #a8a294;
-  --fg-faint: #5d5a4f;
-  --accent: #e5484d;
-  --brass: #c9a86a;
+  --hue: 199;
+  /* White Noise & Ambient Sound（ui-ux-pro-max 2.13）暗底 */
+  --bg: #0f172a;
+  --fg: #ffffff;
+  --fg-dim: #e2e8f0;
+  --fg-faint: #cbd5e1;
+  --accent: #0284c7;
+  --card: #192134;
+  --muted: #131b2f;
+  --line: rgb(255 255 255 / 8%);
+  --ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --font-latin: "Instrument Serif", "Times New Roman", serif;
+  --font-cjk: "Noto Serif SC", "Songti SC", "STSong", "Source Han Serif SC", "SimSun", serif;
+  --font-display: var(--font-cjk), var(--font-latin);
+  --dock-reserve: 228px;
 }
 
 * {
@@ -14,41 +31,121 @@
 html,
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 body {
-  background: radial-gradient(120% 90% at 50% 0%, #1b2130 0%, #0b0d15 62%), #0b0d15;
+  background: var(--bg);
   color: var(--fg);
-  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  font-family: var(--font-display);
+  font-weight: 300;
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
 }
 
+#app {
+  min-height: 100dvh;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- 氛围层 ---- */
+
+.gradient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 0% 100%, #22d3ee 0%, transparent 42%),
+    radial-gradient(90% 80% at 100% 0%, #0284c7 0%, transparent 40%),
+    radial-gradient(70% 60% at 100% 100%, #06b6d4 0%, transparent 38%), #0a1018;
+}
+
+.gradient canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.veil {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgb(15 23 42 / 36%);
+  transition: background 600ms var(--ease);
+}
+
+.veil.talking {
+  background: rgb(15 23 42 / 48%);
+}
+
+.veil.lost {
+  background: rgb(15 23 42 / 62%);
+}
+
+/* ---- 布局 ---- */
+
 .shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  overflow: hidden;
 }
 
-.panel {
-  width: min(420px, 92vw);
+.hero {
+  position: relative;
+  z-index: 2;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  user-select: none;
+  padding: var(--space-3xl) var(--space-xl) calc(var(--dock-reserve) + 24px);
 }
 
-/* ---- ON AIR 灯 ---- */
+.dock {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 32px));
+  min-height: var(--dock-reserve);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--space-lg);
+  padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- ON AIR ---- */
 
 .on-air {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 28px;
-  font-size: 12px;
-  letter-spacing: 0.45em;
-  text-indent: 0.45em;
+  margin: 0 0 var(--space-xl);
+  font-family: var(--font-latin);
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
   color: var(--fg-faint);
-  transition: color 0.6s;
+  transition: color 600ms var(--ease);
 }
 
 .on-air.active {
@@ -59,22 +156,20 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #4a3f3f;
-  transition: background 0.6s;
+  background: #334155;
+  transition:
+    background 600ms var(--ease),
+    box-shadow 600ms var(--ease);
 }
 
 .on-air.active .lamp {
   background: var(--accent);
-  box-shadow: 0 0 12px 2px rgb(229 72 77 / 45%);
+  box-shadow: 0 0 12px 2px rgb(2 132 199 / 45%);
   animation: breathe 2.6s ease-in-out infinite;
 }
 
 .on-air.talking .lamp {
   animation-duration: 0.9s;
-}
-
-.tagline.talking {
-  color: var(--accent);
 }
 
 @keyframes breathe {
@@ -87,80 +182,80 @@ body {
   }
 }
 
-/* ---- 标题区 ---- */
+/* ---- 台名 ---- */
 
 .title {
   margin: 0;
-  font-size: clamp(30px, 6vw, 44px);
-  font-weight: 300;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
-}
-
-.tagline {
-  margin: 18px 0 0;
-  font-size: 14px;
-  color: var(--fg-dim);
-  letter-spacing: 0.12em;
+  font-family: var(--font-latin);
+  font-size: clamp(3.25rem, 9vw, 5.5rem);
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  color: var(--fg);
 }
 
 /* ---- 正在播放 ---- */
 
 .now-playing {
-  margin: 44px 0 36px;
-  padding: 18px 12px;
-  border-top: 1px solid rgb(233 228 216 / 8%);
-  border-bottom: 1px solid rgb(233 228 216 / 8%);
+  margin: var(--space-2xl) 0 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  transition: opacity 0.5s;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: 36ch;
+  transition: opacity 500ms var(--ease);
 }
 
 .now-playing.silent {
-  opacity: 0.45;
+  opacity: 0.7;
 }
 
 .np-label {
-  font-size: 11px;
-  letter-spacing: 0.35em;
-  text-indent: 0.35em;
+  font-size: 0.7rem;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
   color: var(--fg-faint);
 }
 
 .np-title {
-  font-size: 17px;
-  letter-spacing: 0.08em;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
   color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 36ch;
 }
 
-/* ---- 电源开关（开台/关台） ---- */
+/* ---- 开台 / 关台 ---- */
 
 .power {
+  margin-top: var(--space-3xl);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 12px 36px;
   font-family: inherit;
-  width: 88px;
-  height: 88px;
-  border-radius: 50%;
-  border: 1px solid rgb(233 228 216 / 18%);
-  background: rgb(233 228 216 / 3%);
-  color: var(--fg-dim);
-  font-size: 15px;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+  font-size: 0.85rem;
+  letter-spacing: 0.38em;
+  text-indent: 0.38em;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--line);
   cursor: pointer;
   transition:
-    border-color 0.3s,
-    color 0.3s,
-    box-shadow 0.3s,
-    background 0.3s;
+    border-color 250ms var(--ease),
+    color 250ms var(--ease),
+    background 250ms var(--ease);
 }
 
 .power:hover:not(:disabled) {
-  border-color: var(--brass);
-  color: var(--fg);
+  border-color: rgb(2 132 199 / 55%);
+  background: #1b2a44;
+}
+
+.power:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .power:disabled {
@@ -169,96 +264,141 @@ body {
 }
 
 .power.on {
-  border-color: var(--accent);
-  color: var(--fg);
-  background: rgb(229 72 77 / 6%);
-  box-shadow:
-    0 0 24px rgb(229 72 77 / 12%),
-    inset 0 0 18px rgb(229 72 77 / 8%);
+  border-color: rgb(2 132 199 / 55%);
+  background: rgb(2 132 199 / 18%);
+}
+
+.power:focus-visible,
+.chat-send:focus-visible,
+.chat-input:focus-visible,
+.volume input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* ---- 音量 ---- */
 
 .volume {
-  margin-top: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  font-size: 12px;
-  letter-spacing: 0.25em;
-  text-indent: 0.25em;
-  color: var(--fg-faint);
+  min-height: 44px;
+  font-size: 0.75rem;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  color: var(--fg-dim);
+  flex-shrink: 0;
 }
 
 .volume input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
   width: 180px;
-  accent-color: var(--brass);
+  height: 44px;
+  margin: 0;
+  background: transparent;
   cursor: pointer;
 }
 
-/* ---- 留言区（P2：唯一留言输入框 FR-050，只显示自己的留言 FR-053） ---- */
+.volume input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: rgb(255 255 255 / 22%);
+}
+
+.volume input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 0;
+}
+
+.volume input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: rgb(255 255 255 / 22%);
+  border: 0;
+}
+
+.volume input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg);
+  border: 0;
+}
+
+/* ---- 留言（FR-050 / FR-052 / FR-053） ---- */
 
 .chat {
-  margin-top: 32px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-md);
+  min-height: 0;
+  background: transparent;
 }
 
 .chat-list {
-  min-height: 72px;
-  max-height: 140px;
+  min-height: 44px;
+  max-height: 120px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid rgb(233 228 216 / 10%);
-  border-radius: 8px;
-  background: rgb(233 228 216 / 2%);
+  gap: 8px;
+  padding: 0 2px;
   text-align: left;
+  user-select: text;
 }
 
 .chat-list.empty {
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  text-align: center;
 }
 
 .chat-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: 0.8rem;
   color: var(--fg-faint);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 18px rgb(15 23 42 / 80%);
 }
 
 .chat-item {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--fg-dim);
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--fg);
+  text-shadow: 0 1px 18px rgb(15 23 42 / 80%);
 }
 
 .chat-form {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .chat-input {
   flex: 1;
+  min-height: 44px;
   font-family: inherit;
-  font-size: 13px;
-  padding: 9px 12px;
+  font-size: 0.9rem;
+  padding: 8px 0;
   color: var(--fg);
-  background: rgb(233 228 216 / 3%);
-  border: 1px solid rgb(233 228 216 / 14%);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 0;
   outline: none;
-  transition: border-color 0.25s;
+  transition: border-color 200ms var(--ease);
 }
 
 .chat-input:focus {
-  border-color: var(--brass);
+  border-bottom-color: var(--accent);
 }
 
 .chat-input::placeholder {
@@ -266,25 +406,54 @@ body {
 }
 
 .chat-send {
+  min-height: 44px;
+  min-width: 44px;
   font-family: inherit;
-  font-size: 13px;
-  padding: 0 16px;
+  font-size: 0.8rem;
+  letter-spacing: 0.22em;
+  padding: 0 4px;
   color: var(--fg-dim);
-  background: rgb(233 228 216 / 3%);
-  border: 1px solid rgb(233 228 216 / 14%);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
   cursor: pointer;
-  transition:
-    border-color 0.25s,
-    color 0.25s;
+  transition: color 200ms var(--ease);
 }
 
 .chat-send:hover:not(:disabled) {
-  border-color: var(--brass);
   color: var(--fg);
 }
 
 .chat-send:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: var(--space-2xl) var(--space-lg) calc(var(--dock-reserve) + 16px);
+  }
+
+  .volume input[type="range"] {
+    width: min(180px, 46vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .on-air.active .lamp,
+  .on-air.talking .lamp {
+    animation: none;
+    opacity: 1;
+  }
+
+  .power:active:not(:disabled) {
+    transform: none;
+  }
+
+  .veil,
+  .on-air,
+  .now-playing,
+  .power,
+  .chat-send {
+    transition: none;
+  }
 }

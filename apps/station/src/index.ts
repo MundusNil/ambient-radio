@@ -22,17 +22,14 @@ async function main(): Promise<void> {
   const dbPath = resolve(repoRoot, 'data', 'station.db');
   mkdirSync(dirname(dbPath), { recursive: true });
   const store = createStore(dbPath);
-  // 曲库：优先读库；首次启动自动扫描入库（之后用 pnpm scan 更新）
-  let tracks = store.listTracks();
-  if (tracks.length === 0) {
-    console.log('[station] 曲库为空，首次扫描入库…');
-    tracks = await scanLibrary(libraryRoot);
-    if (tracks.length > 0) store.upsertTracks(tracks);
-  }
+  console.log('[station] 扫描曲库…');
+  const tracks = await scanLibrary(libraryRoot);
+  store.upsertTracks(tracks);
+  store.deleteTracksNotIn(tracks.map((t) => t.path));
 
   if (tracks.length === 0) {
     console.error(
-      '[station] 曲库为空：把音频文件放进 config/library/<子风格>/ 后再启动（ER-005：无音乐即无电台）。',
+      '[station] 曲库为空：把音频文件放进 config/library/ 后再启动（子文件夹随意嵌套；ER-005：无音乐即无电台）。',
     );
     process.exit(1);
   }

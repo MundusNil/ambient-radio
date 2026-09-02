@@ -30,7 +30,7 @@ export interface StoredMessage {
 export interface Store {
   upsertTracks(tracks: Track[]): void;
   listTracks(): Track[];
-  /** 删除 DB 中已不存在的曲目（scan 清理：文件被删/移动后同步） */
+  /** 删除 DB 中已不存在的曲目，并清掉对应播放记录（scan 清理：文件被删/移动后同步） */
   deleteTracksNotIn(paths: string[]): void;
   startPlay(trackId: string, startedAt: number): string;
   endPlay(id: string, endedAt: number): void;
@@ -173,12 +173,19 @@ export function createStore(dbPath: string): Store {
     },
 
     deleteTracksNotIn(paths: string[]): void {
-      if (paths.length === 0) {
-        db.prepare('DELETE FROM tracks').run();
-        return;
-      }
-      const placeholders = paths.map(() => '?').join(',');
-      db.prepare(`DELETE FROM tracks WHERE path NOT IN (${placeholders})`).run(...paths);
+      const tx = db.transaction(() => {
+        if (paths.length === 0) {
+          db.prepare('DELETE FROM plays').run();
+          db.prepare('DELETE FROM tracks').run();
+          return;
+        }
+        const placeholders = paths.map(() => '?').join(',');
+        db.prepare(
+          `DELETE FROM plays WHERE track_id IN (SELECT id FROM tracks WHERE path NOT IN (${placeholders}))`,
+        ).run(...paths);
+        db.prepare(`DELETE FROM tracks WHERE path NOT IN (${placeholders})`).run(...paths);
+      });
+      tx();
     },
 
     startPlay(trackId: string, startedAt: number): string {

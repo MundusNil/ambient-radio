@@ -190,4 +190,25 @@ describe('store · 曲库清理（scan 删歌同步）', () => {
     const paths = store.listTracks().map((t) => t.path);
     expect(paths).toEqual(['cafe/a.mp3', 'cafe/c.mp3']);
   });
+
+  it('已播过的曲目被移出曲库时，连播放记录一起清掉，不因外键失败', () => {
+    const store = createStore(':memory:');
+    store.upsertTracks([T('a', 'cafe/a.mp3'), T('b', 'cafe/b.mp3')]);
+    const playA = store.startPlay('a', 1_000_000);
+    store.endPlay(playA, 1_240_000);
+    store.startPlay('b', 1_300_000);
+    store.deleteTracksNotIn(['cafe/a.mp3']);
+    expect(store.listTracks().map((t) => t.path)).toEqual(['cafe/a.mp3']);
+    expect(store.listRecentPlays(0)).toEqual([{ trackId: 'a', startedAt: 1_000_000 }]);
+    expect(store.getLastUnfinishedPlay()).toBeNull();
+  });
+
+  it('曲库清空时连播放记录一起清', () => {
+    const store = createStore(':memory:');
+    store.upsertTracks([T('a', 'cafe/a.mp3')]);
+    store.startPlay('a', 1_000_000);
+    store.deleteTracksNotIn([]);
+    expect(store.listTracks()).toEqual([]);
+    expect(store.getLastUnfinishedPlay()).toBeNull();
+  });
 });

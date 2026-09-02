@@ -30,16 +30,19 @@ pnpm install          # 需要 Node >= 22
 
 ### 2. 放音乐 + 填密钥
 
-把音频放进 `config/library/` 的**子文件夹**，**子文件夹名就是风格标签**：
+把音频放进 `config/library/` 即可，**子文件夹随便嵌套**（也可以直接丢在根目录）：
 
 ```
 config/library/
-├─ va11halla/    ← 风格标签 "va11halla"
-│  └─ Hopes and Dreams.flac
-└─ cafe/         ← 风格标签 "cafe"
+├─ track.flac
+├─ 某张专辑/
+│  └─ song.mp3
+└─ 游戏原声/
+   └─ disc1/
+      └─ 01. Title.flac
 ```
 
-支持 `.mp3` `.flac` `.ogg` `.m4a` `.wav`。新增风格文件夹**不用改配置**就能被随机到。
+支持 `.mp3` `.flac` `.ogg` `.m4a` `.wav` `.opus` `.aac`。所有扫到的歌进同一随机池，**不用改配置**。
 
 然后填 LLM 密钥（串场文案用的，默认 DeepSeek）：
 
@@ -51,6 +54,7 @@ cp .env.example .env    # 编辑 .env，填入 DEEPSEEK_API_KEY
 
 ```bash
 pnpm start
+pnpm stop    # 关掉 9730 / 9731 上的残留进程
 ```
 
 它会自动做完全部准备工作并拉起服务 —— 体检环境、首次自动生成 `.env`、曲库有变动时自动入库，无需你手动 `pnpm scan`：
@@ -76,22 +80,19 @@ pnpm start
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm start` | 一键启动（体检 + 自动入库 + 电台 + 面板） |
-| `pnpm start -- --check` | 只体检不启动，排障用 |
+| `pnpm stop` | 结束占用 9730 / 9731 的进程（上次没 Ctrl+C 干净时用） |
 | `pnpm scan` | 手动重扫曲库（通常不需要，启动时会自检） |
 | `pnpm voice:compare` | TTS 音色盲听对比（挑她的声音） |
 
-调电台 = 改 **`config/station.config.json`**，改完重启生效：
+调电台 = 改 **`config/station.config.json`**，改完重启生效。曲库本身不用改这个文件。
 
 | 区块 | 管什么 |
 | --- | --- |
 | `engine` | 说话频率、留言回应时限、小主题概率、空房间是否开口 |
-| `config/library/<风格>/lore.md` | 该作品世界书（词典，聊到才进 prompt） |
-| `config/library/<风格>/tracks.md` | 曲名备注 |
-| `config/speech-examples.md` | 口吻样本 |
-| `config/persona.md` | 她是谁（不要写作品百科） |
-| `scheduler` | 各风格权重、时段偏好、防重复窗口 |
+| `scheduler` | 防重复窗口；可选的文件夹权重/时段加成（空 = 所有文件夹等权） |
 | `audio.ducking` | 说话时音乐压低多少、恢复多快 |
 | `llm` / `tts` | 模型、音色、语速 |
+| `config/persona.md` | 她是谁 |
 
 ---
 
@@ -114,7 +115,7 @@ pnpm test      # Vitest（core 全是纯逻辑）
 pnpm check     # Biome lint + 格式
 ```
 
-- [`AGENTS.md`](AGENTS.md) —— AI 助手在本仓库工作的入口宪法，改动前先读
+- [`AGENTS.md`](AGENTS.md) —— AI 入口索引；行为/架构/流程见文内文档表
 
 仓库结构：`packages/core`（电台大脑，纯逻辑零 IO）· `packages/adapters`（LLM/TTS/SQLite/ffprobe）· `apps/station`（守护进程 :9730）· `apps/web`（面板 :9731）· `config`（人格、配置、曲库）· `data`（SQLite）。
 

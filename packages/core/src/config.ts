@@ -7,9 +7,9 @@ import type { SubStyle } from './types';
 export interface SchedulerConfig {
   /** FR-018：30 分钟滑窗内同曲不出现；曲库不足时放宽并标记 */
   noRepeatWindowMs: number;
-  /** 子风格基础权重（文件夹名 → 权重） */
+  /** 可选。文件夹名 → 基础权重；没写的文件夹默认 1，不必登记就能播 */
   styleBaseWeights: Record<SubStyle, number>;
-  /** FR-020：时段 × 子风格修正（深夜偏安静、白天偏明亮） */
+  /** 可选。时段 × 文件夹名加成；没写的默认 1（FR-020） */
   timeOfDayBoost: Partial<Record<DayPart, Record<SubStyle, number>>>;
   /** FR-019：距上次播放每过 N 首歌，惩罚减半 */
   recencyPenaltyHalfLifePlays: number;
@@ -42,19 +42,8 @@ export interface EngineConfig {
 
 export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
   noRepeatWindowMs: 30 * 60 * 1000,
-  styleBaseWeights: {
-    'game-bgm': 1.0,
-    cafe: 1.0,
-    'vocal-soft': 0.6,
-    'night-quiet': 0.8,
-  },
-  timeOfDayBoost: {
-    deepNight: { 'night-quiet': 1.8, 'vocal-soft': 1.2 },
-    morning: { cafe: 1.3 },
-    afternoon: { 'game-bgm': 1.2 },
-    evening: {},
-    lateNight: { 'night-quiet': 1.5 },
-  },
+  styleBaseWeights: {},
+  timeOfDayBoost: {},
   recencyPenaltyHalfLifePlays: 8,
 };
 

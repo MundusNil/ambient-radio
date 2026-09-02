@@ -1,17 +1,17 @@
 /**
- * 一键启动：环境体检 → 必要时扫描曲库 → 同时拉起电台守护进程与收音机面板。
+ * 一键启动：环境体检 → 曲库体检 → 电台就绪后再拉收音机面板。
+ * 守护进程启动时递归扫描 config/library（任意嵌套）。
  *
  * 用户只需两条命令：pnpm install && pnpm start
- * 直接 spawn node 执行真实 JS 入口，不依赖 pnpm 子命令（绕开 PATH 问题）。
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { freeRadioPorts, radioPorts } from './ports.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const AUDIO_EXT = /\.(flac|mp3|wav|ogg|m4a|aac)$/i;
+const AUDIO_EXT = /\.(flac|mp3|wav|ogg|m4a|aac|opus)$/i;
 
 const CYAN = '\u001b[36m';
 const GREEN = '\u001b[32m';
@@ -84,20 +84,10 @@ if (existsSync(envPath)) {
 console.log(cy('\n[2/3] 曲库'));
 
 const libRoot = join(ROOT, 'config', 'library');
-let audioCount = 0;
-for (const dir of listDir(libRoot)) {
-  const full = join(libRoot, dir);
-  let st;
-  try {
-    st = statSync(full);
-  } catch {
-    continue;
-  }
-  if (!st.isDirectory()) continue;
-  for (const f of listDir(full)) if (AUDIO_EXT.test(f)) audioCount += 1;
-}
-if (audioCount === 0) blockers.push('曲库是空的。把音乐按风格放进 config/library/<风格名>/');
-else console.log(`  ${OK} 找到 ${audioCount} 个音频文件`);
+const audioCount = countAudio(libRoot);
+if (audioCount === 0)
+  blockers.push('曲库是空的。把音乐放进 config/library/ 即可，子文件夹随便嵌套。');
+else console.log(`  ${OK} 找到 ${audioCount} 个音频文件（启动时入库）`);
 
 if (blockers.length > 0) {
   console.log(`\n${rd('无法启动：')}`);
@@ -105,33 +95,21 @@ if (blockers.length > 0) {
   process.exit(1);
 }
 
-const tsx = resolveBin('tsx', join('dist', 'cli.mjs'));
-if (tsx && audioCount > 0) {
-  const inDb = countTracks(join(ROOT, 'data', 'station.db'));
-  if (inDb === audioCount) {
-    console.log(`  ${OK} 数据库已是最新（${inDb} 首）`);
-  } else {
-    console.log(`  曲库 ${audioCount} 首 / 数据库 ${inDb} 首 → 正在扫描入库...`);
-    const r = run(process.execPath, [tsx, join('apps', 'station', 'src', 'scan.ts')], {
-      cwd: ROOT,
-    });
-    if (r.ok) console.log(`  ${OK} 入库完成`);
-    else console.log(`  ${ye('[!]')} 扫描未完全成功，电台仍会启动：\n${r.out.slice(-300)}`);
+function countAudio(dir) {
+  let n = 0;
+  for (const name of listDir(dir)) {
+    if (name.startsWith('.')) continue;
+    const full = join(dir, name);
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) n += countAudio(full);
+    else if (st.isFile() && AUDIO_EXT.test(name)) n += 1;
   }
-}
-
-function countTracks(dbPath) {
-  if (!existsSync(dbPath)) return -1;
-  try {
-    const req = createRequire(join(ROOT, 'packages', 'adapters', 'package.json'));
-    const Database = req('better-sqlite3');
-    const db = new Database(dbPath, { readonly: true });
-    const row = db.prepare('SELECT COUNT(*) AS c FROM tracks').get();
-    db.close();
-    return row.c;
-  } catch {
-    return -1;
-  }
+  return n;
 }
 
 if (process.argv.includes('--check')) {
@@ -146,39 +124,73 @@ if (process.argv.includes('--check')) {
 
 console.log(cy('\n[3/3] 启动'));
 
+const leftover = freeRadioPorts();
+if (leftover.length > 0) {
+  console.log(
+    `  ${ye('[!]')} 已结束上次残留：${leftover.map((f) => `${f.port}(PID ${f.pids.join(',')})`).join('、')}`,
+  );
+}
+
 const node = process.execPath;
+const tsx = resolveBin('tsx', join('dist', 'cli.mjs'));
 const vite = resolveBin('vite', join('bin', 'vite.js'));
 if (!tsx || !vite) {
   console.log(rd('缺少 tsx 或 vite，请先运行 pnpm install'));
   process.exit(1);
 }
 
+const [stationPort, webPort] = radioPorts();
+
 const station = spawn(node, [tsx, 'src/index.ts'], {
   cwd: join(ROOT, 'apps', 'station'),
   stdio: 'inherit',
 });
-const web = spawn(node, [vite], { cwd: join(ROOT, 'apps', 'web'), stdio: 'inherit' });
-
-console.log(`\n${gr('电台已启动')}`);
-console.log(`  ${cy('收听面板')}   http://localhost:9731   <- 打开它开始收听`);
-console.log(`  ${cy('接口自检')}   http://localhost:9730/api/health`);
-console.log(`  ${cy('后台')}       http://localhost:9730/admin`);
-if (warnings.length > 0) {
-  console.log(ye('\n提示：'));
-  for (const w of warnings) console.log(`  ${ye('[!]')} ${w}`);
-}
-console.log(`\n${ye('梦可只在有人听时开口 —— 打开上面的面板，她才会开始说话。')}`);
-console.log('Ctrl+C 停止\n');
-
+console.log(`  等待电台 :${stationPort} …`);
+let web = null;
 const shutdown = () => {
   station.kill();
-  web.kill();
+  web?.kill();
   process.exit(0);
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 station.on('exit', (code) => {
   console.log(rd(`电台进程退出（${code}）`));
-  web.kill();
+  web?.kill();
   process.exit(code ?? 1);
 });
+
+async function waitForHealth(port, timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+        signal: AbortSignal.timeout(800),
+      });
+      if (res.ok) return true;
+    } catch {
+      /* 扫库中，还没听端口 */
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
+}
+
+if (!(await waitForHealth(stationPort))) {
+  console.log(rd(`电台未在时限内就绪（:${stationPort}）`));
+  station.kill();
+  process.exit(1);
+}
+
+web = spawn(node, [vite], { cwd: join(ROOT, 'apps', 'web'), stdio: 'inherit' });
+
+console.log(`\n${gr('电台已启动')}`);
+console.log(`  ${cy('收听面板')}   http://localhost:${webPort}   <- 打开它开始收听`);
+console.log(`  ${cy('接口自检')}   http://localhost:${stationPort}/api/health`);
+console.log(`  ${cy('后台')}       http://localhost:${stationPort}/admin`);
+if (warnings.length > 0) {
+  console.log(ye('\n提示：'));
+  for (const w of warnings) console.log(`  ${ye('[!]')} ${w}`);
+}
+console.log(`\n${ye('梦可只在有人听时开口 —— 打开上面的面板，她才会开始说话。')}`);
+console.log('Ctrl+C 或另开终端 pnpm stop\n');

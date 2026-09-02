@@ -15,11 +15,17 @@ dist/
 data/
 .cache/
 
-# 曲库音频：目录结构进 git，音频文件不进
-config/library/*/*
-!config/library/*/.gitkeep
-!config/library/*/lore.md
-!config/library/*/tracks.md
+# 曲库音频：目录结构进 git，音频文件不进（任意嵌套）
+config/library/**/*.mp3
+config/library/**/*.flac
+config/library/**/*.ogg
+config/library/**/*.m4a
+config/library/**/*.wav
+config/library/**/*.opus
+config/library/**/*.aac
+!config/library/**/.gitkeep
+!config/library/**/lore.md
+!config/library/**/tracks.md
 
 # 本地 git worktree
 .worktrees/

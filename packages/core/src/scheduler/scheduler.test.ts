@@ -37,6 +37,17 @@ describe('scheduler · 选曲', () => {
     });
     expect(s.pickNext(0).track.id).toBe('on');
   });
+
+  it('无风格标签与不同文件夹的曲目都在同一选曲池（默认等权）', () => {
+    const tracks = [T('root', []), T('nested', ['ENDER LILIES']), T('other', ['VA-11 HALL-A'])];
+    const pick = (rng: number) =>
+      createScheduler({
+        tracks,
+        config: DEFAULT_SCHEDULER_CONFIG,
+        rng: fixed(rng),
+      }).pickNext(0).track.id;
+    expect(new Set([pick(0), pick(0.4), pick(0.9)])).toEqual(new Set(['root', 'nested', 'other']));
+  });
 });
 
 describe('scheduler · 时段权重（FR-020）', () => {

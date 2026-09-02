@@ -4,12 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "description": "AI 氛围电台：音乐永远是主体，梦可按自己的节奏轻轻串场。",
-  "packageManager": "pnpm@11.16.0",
+  "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "start": "node scripts/start.mjs",
+    "stop": "node scripts/stop.mjs",
     "setup:voice": "python -m pip install edge-tts",
     "dev:station": "pnpm --filter @ambient-radio/station dev",
     "dev:web": "pnpm --filter @ambient-radio/web dev",

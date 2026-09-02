@@ -1,7 +1,7 @@
 /**
  * 曲库扫描命令：pnpm scan
- * config/library/<子风格>/*.mp3 → SQLite（tracks 表，幂等 upsert）。
- * 新增歌曲 / 改标签 = 跑一次本命令；文件夹名即子风格标签（D3）。
+ * config/library 下任意嵌套音频 → SQLite（幂等 upsert + 清理已删文件）。
+ * 启动时也会自动扫；第一层文件夹名仍是可选风格标签（D3）。
  */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

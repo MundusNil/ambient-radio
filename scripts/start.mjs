@@ -77,7 +77,7 @@ if (existsSync(envPath)) {
   const tpl = join(ROOT, '.env.example');
   if (existsSync(tpl)) {
     copyFileSync(tpl, envPath);
-    warnings.push('已生成 .env，请填入 DEEPSEEK_API_KEY，否则梦可会保持沉默（音乐照常播放）');
+    warnings.push('已生成 .env，请填入 ARK_API_KEY，否则梦可会保持沉默（音乐照常播放）');
   } else blockers.push('缺少 .env 与 .env.example');
 }
 

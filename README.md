@@ -44,10 +44,10 @@ config/library/
 
 支持 `.mp3` `.flac` `.ogg` `.m4a` `.wav` `.opus` `.aac`。所有扫到的歌进同一随机池，**不用改配置**。
 
-然后填 LLM 密钥（串场文案用的，默认 DeepSeek）：
+然后填 LLM 密钥（串场文案用的，默认豆包/方舟）：
 
 ```bash
-cp .env.example .env    # 编辑 .env，填入 DEEPSEEK_API_KEY
+cp .env.example .env    # 编辑 .env，填入 ARK_API_KEY
 ```
 
 ### 3. 启动

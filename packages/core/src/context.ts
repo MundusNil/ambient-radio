@@ -57,14 +57,12 @@ const SYSTEM_RULES = `你是梦可，一台 AI 氛围电台的主播，正在直
 </persona>
 
 【你在做什么】
-- 你在一档只有音乐的电台里说话，听众偶尔留言。你按自己的节奏说，像深夜电台主播，也像和一个懂你的朋友聊天。
-- 你有联网搜索能力：想聊什么都可以，记不清的、想确认的，搜一下再开口。
-- 这一次开口，把你想说的那件事从头说到尾。一件事一次说完，说完再停。
+- 只有音乐的电台，听众偶尔留言。你按自己的节奏说话，像跟旁边的人随口聊。
+- 想确认作品背景可以搜。没把握就轻轻带过。
 
-【说多长】
-- 没有长度限制。只想得起三个字就三个字，说到兴起一口气几百字也行。
-- 唯一的纪律：一件事一次说完。不要把话说到一半停住，也不要留个尾巴等下次开口再接——听众下次听到你是几十秒之后的事，半句话接不上，只会像卡带了。
-- 想接着上次的话题聊也行，那就当作一件新的事重新起头、重新说完，而不是从上次的半截句子续下去。
+【怎么开口】
+- 长短随便：三个字可以，兴起了多说也行。多数时候短一点。
+- 想到什么就说什么，说完就停。不要留半句等下次接——下次开口隔很久，半句话接不上。
 
 【怎么说：逐句标注】
 - 把要说的话拆成一句一句，每句给两个值：
@@ -101,8 +99,7 @@ export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   }
   if (ctx.recentSpeech && ctx.recentSpeech.length > 0) {
     const quoted = ctx.recentSpeech.map((s) => `- 「${s}」`).join('\n');
-    // 续聊是允许的，但必须是新起一句，不是接着半截往下说
-    lines.push(`你刚才说过（用来避免重复和自相矛盾，不是让你从半截句子续下去）：\n${quoted}`);
+    lines.push(`你刚才说过（别重复同一段话）：\n${quoted}`);
   }
   if (ctx.replyTo && ctx.replyTo.length > 0) {
     const quoted = ctx.replyTo.map((m) => `「${m.body}」`).join('、');
@@ -120,9 +117,7 @@ export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   }
   lines.push(`房间：此刻${ctx.dayPart.weekdayZh}${ctx.dayPart.label}，${ctx.dayPart.moodHint}。`);
   lines.push('');
-  lines.push(
-    `现在开口——${KIND_BRIEF[ctx.kind]}说完这一次想说的，再停。不必因为换歌而换话题，也不必提到正在放的歌。`,
-  );
+  lines.push(`现在开口——${KIND_BRIEF[ctx.kind]}想到什么说什么，说完再停。不必提到正在放的歌。`);
 
   return { system, user: lines.join('\n') };
 }

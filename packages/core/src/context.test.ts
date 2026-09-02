@@ -50,11 +50,11 @@ describe('buildSegmentPrompt', () => {
     expect(topic.user).toContain('几十字到几百字都行');
   });
 
-  it('要求一次把一件事说完，不留半句给下次（避免说一半停半分钟）', () => {
+  it('开口说完就停，不留半句给下次', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.system).toContain('一件事一次说完');
-    expect(p.system).toContain('不要把话说到一半停住');
-    expect(p.user).toContain('说完这一次想说的，再停');
+    expect(p.system).toContain('说完就停');
+    expect(p.system).toContain('不要留半句等下次接');
+    expect(p.user).toContain('说完再停');
   });
 
   it('逐句韵律：system 要求每句给出 emotion / pause，不再要求 speed（语速系统固定）', () => {
@@ -67,10 +67,10 @@ describe('buildSegmentPrompt', () => {
     expect(p.system).toContain('不要写 <#0.5#> 这类标记');
   });
 
-  it('近期口播是参照物，不是要接着半句说下去', () => {
+  it('近期口播用来避免重复同一段话', () => {
     const p = buildSegmentPrompt({ ...ctx, recentSpeech: ['灯还亮着。'] });
     expect(p.user).toContain('你刚才说过');
-    expect(p.user).toContain('不是让你从半截句子续下去');
+    expect(p.user).toContain('别重复同一段话');
   });
 
   it('换曲间隙没有曲目信息时不出现《》', () => {
@@ -129,7 +129,7 @@ describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
 describe('buildSegmentPrompt · 酒馆式装配', () => {
   it('system 主指令短，不含起头灵感立法', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.system).toContain('把你想说的那件事从头说到尾');
+    expect(p.system).toContain('像跟旁边的人随口聊');
     expect(p.system).not.toContain('开场千变万化');
     expect(p.user).not.toContain('可选的起头灵感');
     expect(p.user).not.toContain('起头护栏');
@@ -168,7 +168,7 @@ describe('buildSegmentPrompt · 酒馆式装配', () => {
 
   it('收尾指令是「说完再停」，不是「请播一段」', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.user).toContain('说完这一次想说的，再停');
+    expect(p.user).toContain('说完再停');
     expect(p.user).not.toContain('请播一段');
     expect(p.user).not.toContain('接着说就好');
   });

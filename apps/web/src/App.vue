@@ -13,6 +13,8 @@ import {
   type WsHandle,
 } from './api';
 import { RadioAudio } from './audio';
+// biome-ignore lint/correctness/noUnusedImports: used in template
+import GradientBackground from './GradientBackground.vue';
 
 const info = ref<StationInfo | null>(null);
 const state = ref<StationState | null>(null);
@@ -136,20 +138,22 @@ onUnmounted(() => {
   if (statePollTimer !== null) clearInterval(statePollTimer);
 });
 </script>
-
 <template>
   <main class="shell">
-    <section class="panel">
+    <GradientBackground :talking="hostTalking" :off-air="offAir" />
+    <div class="veil" :class="{ talking: hostTalking, lost: offAir }" aria-hidden="true" />
+
+    <section class="hero">
       <p class="on-air" :class="{ active: live, talking: hostTalking }">
-        <span class="lamp" aria-hidden="true" />ON AIR
+        <span class="lamp" aria-hidden="true" />
+        ON AIR
       </p>
 
-      <h1 class="title">{{ info?.station.name ?? '梦可电台' }}</h1>
-      <p class="tagline" :class="{ talking: hostTalking }">
-        {{ hostTalking ? '梦可正在说话…' : '音乐永远是主体，她只是偶尔轻轻开口。' }}
-      </p>
+      <h1 class="title">Mock Radio</h1>
 
-      <div class="now-playing" :class="{ silent: !live || !state?.title }">
+      <p class="sr-only" aria-live="polite">{{ hostTalking ? '梦可正在说话' : '' }}</p>
+
+      <p class="now-playing" :class="{ silent: !live || !state?.title }" aria-live="polite">
         <template v-if="offAir">
           <span class="np-label">信号丢失</span>
           <span class="np-title">曲库暂时无法播放，维护者处理中</span>
@@ -164,24 +168,22 @@ onUnmounted(() => {
         </template>
         <template v-else>
           <span class="np-label">频率调谐中</span>
-          <span class="np-title">——</span>
         </template>
-      </div>
+      </p>
 
       <button
         class="power"
         :class="{ on: live }"
         :disabled="connecting"
+        :aria-pressed="live"
+        :aria-busy="connecting"
         @click="live ? closeStation() : openStation()"
       >
-        {{ connecting ? '调频中…' : live ? '关台' : '开台' }}
+        {{ connecting ? '调频中' : live ? '关台' : '开台' }}
       </button>
+    </section>
 
-      <div class="volume">
-        <label for="vol">音量</label>
-        <input id="vol" v-model.number="volume" type="range" min="0" max="1" step="0.01" />
-      </div>
-
+    <div class="dock">
       <div v-if="live" class="chat">
         <div class="chat-list" :class="{ empty: messages.length === 0 }">
           <template v-if="messages.length > 0">
@@ -192,17 +194,33 @@ onUnmounted(() => {
           </template>
         </div>
         <form class="chat-form" @submit.prevent="sendMessage">
+          <label class="sr-only" for="msg">留言</label>
           <input
+            id="msg"
             v-model="draft"
             class="chat-input"
             type="text"
             maxlength="200"
-            placeholder="说点什么…"
+            placeholder="说点什么"
             autocomplete="off"
           />
           <button class="chat-send" type="submit" :disabled="sending || !draft.trim()">发送</button>
         </form>
       </div>
-    </section>
+      <div class="volume">
+        <label for="vol">音量</label>
+        <input
+          id="vol"
+          v-model.number="volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          :aria-valuenow="Math.round(volume * 100)"
+        />
+      </div>
+    </div>
   </main>
 </template>

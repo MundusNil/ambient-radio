@@ -63,6 +63,10 @@ export interface ProgrammeMemory {
   ingest(extracts: MemoryExtraction[], now: number): void;
 }
 
+function memoryKey(kind: string, text: string): string {
+  return `${kind}\n${text.trim().replace(/\s+/g, ' ')}`;
+}
+
 export function createProgrammeMemory(options: {
   config: MemoryConfig;
   list: () => MemoryRecordL1[];
@@ -72,37 +76,51 @@ export function createProgrammeMemory(options: {
 }): ProgrammeMemory {
   return {
     retrieve(now: number): MemoryRecordL1[] {
-      const selected = selectTopMemories(options.list(), now, options.config);
-      for (const m of selected) {
-        options.touch(m.id, now);
-      }
-      return selected;
+      // 注入 ≠ 引用。检索时 touch 会让 recency 自我加分，一次性闲聊会被反复捞出。
+      return selectTopMemories(options.list(), now, options.config);
     },
     ingest(extracts: MemoryExtraction[], now: number): void {
       if (extracts.length === 0) return;
-      options.insert(
-        extracts.map((m) => ({
+      const seen = new Set(
+        options
+          .list()
+          .filter((m) => m.status === 'active')
+          .map((m) => memoryKey(m.kind, m.text)),
+      );
+      const rows: MemoryRecordL1[] = [];
+      for (const m of extracts) {
+        const key = memoryKey(m.kind, m.text);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push({
           id: options.nextId(),
           kind: m.kind,
           text: m.text,
           importance: m.importance,
           createdAt: now,
           lastUsedAt: null,
-          status: 'active' as const,
-        })),
-      );
+          status: 'active',
+        });
+      }
+      if (rows.length > 0) options.insert(rows);
     },
   };
 }
 
-/** P3 记忆提取的系统提示：策展规则 + 匿名硬约束（FR-080~085） */
+/** P3 记忆提取：策展规则（FR-080~085）。Skip 列表对齐 Hermes：不记一次性闲聊/氛围布景。 */
 export const MEMORY_EXTRACTION_SYSTEM = `你是电台节目的记忆策展人。阅读下面这段主播播报，判断是否有值得长期保留的节目事实。
 
 只记录与节目连续性有关的（满足任一即可记）：
-- topic：节目谈过的可延续话题（如听众表现出对某类音乐/时段的偏好，且主播回应了）
-- promise：主播做出的承诺或未完成的话题（如「明天晚上这个点」「下次放那首」「以后多聊」）
-- meme：节目内部梗
-- event：重要的节目事件（点歌受理、特别的互动等）
+- topic：听众追问过、或主播明确说「下次再聊」的可延续话题
+- promise：主播做出的承诺或未完成的话题（如「明天晚上这个点」「下次放那首」）
+- meme：已经反复出现、听众也接得住的节目内部梗
+- event：重要的节目事件（点歌受理、特别的互动）
+
+不要记录（即使主播说了很多遍）：
+- 一次性氛围布景：吧台、便利店、车站、橘猫、空座位、像素小物件等。那是当下开口的闲聊，不是节目栏目。
+- 对刚播过的口播内容的复述或摘要
+- 可以联网再搜到的作品设定、曲目介绍
+- 没有未完约定、听众没追问的轻松话题
 
 硬性规则：
 - 只输出 JSON：{"memories": [{"kind": "topic|promise|meme|event", "text": "一句话", "importance": 0~1}]}

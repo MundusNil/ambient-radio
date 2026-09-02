@@ -117,11 +117,11 @@ export function createRadio(deps: RadioDeps) {
     hostName: deps.hostName,
     speechExamples: deps.speechExamples,
     retrieveRecentSpeech: () => {
-      const segs = deps.store.listRecentAiredSegments(4);
+      const segs = deps.store.listRecentAiredSegments(2);
       return segs
         .slice()
         .reverse()
-        .map((s) => s.text);
+        .map((s) => (s.text.length > 120 ? `${s.text.slice(0, 120)}…` : s.text));
     },
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,

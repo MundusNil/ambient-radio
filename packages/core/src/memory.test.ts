@@ -86,8 +86,8 @@ describe('selectTopMemories', () => {
   });
 });
 
-describe('节目记忆 · retrieve 标记引用', () => {
-  it('选出 top-N 并为入选条目 touch lastUsedAt', () => {
+describe('节目记忆 · retrieve / ingest', () => {
+  it('检索入选记忆，但不把注入当成引用（避免 recency 自我加分）', () => {
     const touched: Array<{ id: string; at: number }> = [];
     const rows = [
       M({ id: 'a', createdAt: NOW - 1_000, importance: 0.8 }),
@@ -103,7 +103,7 @@ describe('节目记忆 · retrieve 标记引用', () => {
       nextId: () => 'unused',
     });
     expect(memory.retrieve(NOW).map((m) => m.id)).toEqual(['a']);
-    expect(touched).toEqual([{ id: 'a', at: NOW }]);
+    expect(touched).toEqual([]);
   });
 
   it('ingest 把策展结果写成 L1 记录', () => {
@@ -129,6 +129,28 @@ describe('节目记忆 · retrieve 标记引用', () => {
         status: 'active',
       },
     ]);
+  });
+
+  it('ingest 跳过与已有记录相同的条目（不把同一句闲聊再写一遍）', () => {
+    const inserted: MemoryRecordL1[] = [];
+    const memory = createProgrammeMemory({
+      config,
+      list: () => [M({ id: 'old', kind: 'topic', text: '聊过像素小吧台' })],
+      touch: () => {},
+      insert: (rows) => {
+        inserted.push(...rows);
+      },
+      nextId: () => 'mem-new',
+    });
+    memory.ingest(
+      [
+        { kind: 'topic', text: '聊过像素小吧台', importance: 0.5 },
+        { kind: 'promise', text: '下次放那首安静的', importance: 0.8 },
+      ],
+      NOW,
+    );
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.kind).toBe('promise');
   });
 });
 

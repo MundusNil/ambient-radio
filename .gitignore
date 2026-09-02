@@ -28,6 +28,9 @@ config/library/*/*
 # 缺失时自动回退系统 PATH 上的 ffmpeg/ffprobe
 tools/ffmpeg/*.exe
 
+# 产品文档与协作规范：个人资产，不入库
+docs/
+
 # OS
 .DS_Store
 Thumbs.db

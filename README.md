@@ -115,9 +115,6 @@ pnpm check     # Biome lint + 格式
 ```
 
 - [`AGENTS.md`](AGENTS.md) —— AI 助手在本仓库工作的入口宪法，改动前先读
-- [`docs/product-requirements.md`](docs/product-requirements.md) —— 产品需求（编号 FR/CR/ER）
-- [`docs/technical-design.md`](docs/technical-design.md) —— 技术设计（灵魂决策 D1~D9）
-- [`docs/guide/`](docs/guide) —— 协作规范、AI 工程化 SOP、部署常驻
 
 仓库结构：`packages/core`（电台大脑，纯逻辑零 IO）· `packages/adapters`（LLM/TTS/SQLite/ffprobe）· `apps/station`（守护进程 :9730）· `apps/web`（面板 :9731）· `config`（人格、配置、曲库）· `data`（SQLite）。
 

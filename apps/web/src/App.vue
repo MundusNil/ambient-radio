@@ -15,6 +15,8 @@ import {
 import { RadioAudio } from './audio';
 // biome-ignore lint/correctness/noUnusedImports: used in template
 import GradientBackground from './GradientBackground.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in template
+import { initialScheme, ORB_SCHEMES, type OrbScheme, persistScheme } from './palettes';
 
 const info = ref<StationInfo | null>(null);
 const state = ref<StationState | null>(null);
@@ -28,6 +30,14 @@ const offAir = ref(false);
 const messages = ref<Array<{ id: string; body: string }>>([]);
 const draft = ref('');
 const sending = ref(false);
+// D4 氛围层配色：右上角设置面板手动切换，localStorage 记忆，切换 2s 颜色滑变
+const scheme = ref<OrbScheme>(initialScheme());
+const settingsOpen = ref(false);
+
+function pickScheme(next: OrbScheme): void {
+  scheme.value = next;
+  persistScheme(next.id);
+}
 
 const audio = new RadioAudio();
 let ws: WsHandle | null = null;
@@ -140,16 +150,57 @@ onUnmounted(() => {
 </script>
 <template>
   <main class="shell">
-    <GradientBackground :talking="hostTalking" :off-air="offAir" />
+    <GradientBackground :scheme="scheme" :talking="hostTalking" :off-air="offAir" />
     <div class="veil" :class="{ talking: hostTalking, lost: offAir }" aria-hidden="true" />
+
+    <button
+      class="gear ui-icon-button"
+      :class="{ open: settingsOpen }"
+      :aria-expanded="settingsOpen"
+      aria-controls="scheme-settings"
+      aria-label="设置"
+      @click="settingsOpen = !settingsOpen"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+      </svg>
+    </button>
+    <Transition name="pop">
+      <fieldset v-if="settingsOpen" id="scheme-settings" class="settings ui-panel">
+        <legend class="settings-title ui-label">氛围配色</legend>
+        <div class="swatches">
+          <label v-for="s in ORB_SCHEMES" :key="s.id" class="ui-swatch">
+            <input
+              class="ui-swatch-input"
+              type="radio"
+              name="scheme"
+              :value="s.id"
+              :checked="scheme.id === s.id"
+              @change="pickScheme(s)"
+            />
+            <span
+              class="ui-swatch-orb"
+              :style="{ '--c1': s.colors[0], '--c2': s.colors[1], '--c3': s.colors[2] }"
+              aria-hidden="true"
+            >
+              <svg class="ui-swatch-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </span>
+            <span class="ui-swatch-name">{{ s.name }}</span>
+          </label>
+        </div>
+      </fieldset>
+    </Transition>
 
     <section class="hero">
       <p class="on-air" :class="{ active: live, talking: hostTalking }">
-        <span class="lamp" aria-hidden="true" />
+        <span class="ui-dot" aria-hidden="true" />
         ON AIR
       </p>
 
-      <h1 class="title">Mock Radio</h1>
+      <h1 class="title ui-display">Mock Radio</h1>
 
       <p class="sr-only" aria-live="polite">{{ hostTalking ? '梦可正在说话' : '' }}</p>
 
@@ -180,8 +231,7 @@ onUnmounted(() => {
       </p>
 
       <button
-        class="power"
-        :class="{ on: live }"
+        class="power ui-button"
         :disabled="connecting"
         :aria-pressed="live"
         :aria-busy="connecting"
@@ -201,13 +251,13 @@ onUnmounted(() => {
           <input
             id="msg"
             v-model="draft"
-            class="chat-input"
+            class="ui-field"
             type="text"
             maxlength="200"
             placeholder="说点什么"
             autocomplete="off"
           />
-          <button class="chat-send" type="submit" :disabled="sending || !draft.trim()">发送</button>
+          <button class="ui-button ui-button--ghost" type="submit" :disabled="sending || !draft.trim()">发送</button>
         </form>
       </div>
       <div class="volume">
@@ -215,6 +265,7 @@ onUnmounted(() => {
         <input
           id="vol"
           v-model.number="volume"
+          class="ui-slider"
           type="range"
           min="0"
           max="1"

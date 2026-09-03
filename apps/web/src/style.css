@@ -218,7 +218,15 @@ body {
   color: var(--fg-faint);
 }
 
+.np-title-slot {
+  display: grid;
+  justify-items: center;
+  max-width: 36ch;
+  min-height: 1.5em;
+}
+
 .np-title {
+  grid-area: 1 / 1;
   font-size: 1rem;
   letter-spacing: 0.04em;
   color: var(--fg);
@@ -226,6 +234,16 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 36ch;
+}
+
+.np-fade-enter-active,
+.np-fade-leave-active {
+  transition: opacity 600ms var(--ease);
+}
+
+.np-fade-enter-from,
+.np-fade-leave-to {
+  opacity: 0;
 }
 
 /* ---- 开台 / 关台 ---- */
@@ -270,7 +288,6 @@ body {
 
 .power:focus-visible,
 .chat-send:focus-visible,
-.chat-input:focus-visible,
 .volume input[type="range"]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -353,20 +370,6 @@ body {
   user-select: text;
 }
 
-.chat-list.empty {
-  align-items: center;
-  justify-content: flex-end;
-  text-align: center;
-}
-
-.chat-hint {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--fg-faint);
-  letter-spacing: 0.06em;
-  text-shadow: 0 1px 18px rgb(15 23 42 / 80%);
-}
-
 .chat-item {
   margin: 0;
   padding: 0;
@@ -379,11 +382,16 @@ body {
 .chat-form {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-sm);
+  width: 80%;
+  margin-inline: auto;
 }
 
 .chat-input {
   flex: 1;
+  min-width: 0;
+
   min-height: 44px;
   font-family: inherit;
   font-size: 0.9rem;
@@ -394,11 +402,14 @@ body {
   border-bottom: 1px solid rgb(255 255 255 / 28%);
   border-radius: 0;
   outline: none;
-  transition: border-color 200ms var(--ease);
+  box-shadow: none;
 }
 
-.chat-input:focus {
-  border-bottom-color: var(--accent);
+.chat-input:focus,
+.chat-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-bottom-color: rgb(255 255 255 / 28%);
 }
 
 .chat-input::placeholder {
@@ -453,7 +464,9 @@ body {
   .on-air,
   .now-playing,
   .power,
-  .chat-send {
+  .chat-send,
+  .np-fade-enter-active,
+  .np-fade-leave-active {
     transition: none;
   }
 }

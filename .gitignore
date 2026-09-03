@@ -24,8 +24,6 @@ config/library/**/*.wav
 config/library/**/*.opus
 config/library/**/*.aac
 !config/library/**/.gitkeep
-!config/library/**/lore.md
-!config/library/**/tracks.md
 
 # 本地 git worktree
 .worktrees/

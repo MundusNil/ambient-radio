@@ -152,6 +152,21 @@ describe('节目记忆 · retrieve / ingest', () => {
     expect(inserted).toHaveLength(1);
     expect(inserted[0]?.kind).toBe('promise');
   });
+
+  it('ingest 丢掉布景词，即使提取模型当成了栏目', () => {
+    const inserted: MemoryRecordL1[] = [];
+    const memory = createProgrammeMemory({
+      config,
+      list: () => [],
+      touch: () => {},
+      insert: (rows) => {
+        inserted.push(...rows);
+      },
+      nextId: () => 'mem-atm',
+    });
+    memory.ingest([{ kind: 'topic', text: '节目曾讨论亮着灯的小店', importance: 0.5 }], NOW);
+    expect(inserted).toEqual([]);
+  });
 });
 
 describe('节目记忆 · 策展解析', () => {
@@ -165,6 +180,19 @@ describe('节目记忆 · 策展解析', () => {
     expect(parseMemoryExtraction('not json')).toEqual([]);
     expect(parseMemoryExtraction('{"memories":[]}')).toEqual([]);
     expect(parseMemoryExtraction('{"memories":[{"kind":"nope","text":"x"}]}')).toEqual([]);
+  });
+
+  it('布景/连续剧词硬过滤，不入库', () => {
+    expect(
+      parseMemoryExtraction(
+        '{"memories":[{"kind":"topic","text":"节目曾讨论亮着灯的小店相关的治愈类内容","importance":0.5}]}',
+      ),
+    ).toEqual([]);
+    expect(
+      parseMemoryExtraction(
+        '{"memories":[{"kind":"topic","text":"糖水铺门口的三花猫成了栏目","importance":0.7}]}',
+      ),
+    ).toEqual([]);
   });
 });
 

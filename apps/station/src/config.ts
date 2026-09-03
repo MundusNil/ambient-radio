@@ -1,7 +1,7 @@
 /** 配置加载：station.config.json → 类型化配置（默认值兜底；调电台=改配置，D 决策） */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EngineConfig, MemoryConfig, SchedulerConfig } from '@ambient-radio/core';
+import type { EngineConfig, MemoryConfig, SchedulerConfig, SegmentKind } from '@ambient-radio/core';
 import {
   DEFAULT_ENGINE_CONFIG,
   DEFAULT_MEMORY_CONFIG,
@@ -48,6 +48,8 @@ export interface LlmConfig {
   maxTokens: number;
   /** 一段口播的字数硬上限：长度自由，但不能变成独白 */
   maxSegmentChars: number;
+  /** 按段落类型覆盖字数上限（对齐 FR-032/033） */
+  maxSegmentCharsByKind?: Partial<Record<SegmentKind, number>>;
 }
 
 /** edge-tts 子配置（免费，D8 默认） */
@@ -144,7 +146,14 @@ export function loadStationConfig(
       webSearch: true,
       timeoutMs: 120_000,
       maxTokens: 2500,
-      maxSegmentChars: 600,
+      maxSegmentChars: 100,
+      maxSegmentCharsByKind: {
+        station_id: 40,
+        interlude: 100,
+        topic: 400,
+        reply: 160,
+        request_ack: 80,
+      },
       ...raw.llm,
     },
     tts: {

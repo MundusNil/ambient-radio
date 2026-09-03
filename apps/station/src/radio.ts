@@ -72,7 +72,6 @@ export interface RadioDeps {
   stationName: string;
   hostName: string;
   persona: string;
-  speechExamples: string;
   engineConfig: EngineConfig;
   schedulerConfig: SchedulerConfig;
   ducking: DuckingConfig;
@@ -90,6 +89,8 @@ export interface RadioDeps {
   memoryConfig: MemoryConfig;
   /** 一段口播的字数硬上限（防长篇独白拖垮节目节奏） */
   maxSegmentChars: number;
+  /** 按段落类型覆盖字数上限（对齐 FR-032/033） */
+  maxSegmentCharsByKind?: Partial<Record<SegmentKind, number>>;
 }
 
 export function createRadio(deps: RadioDeps) {
@@ -109,30 +110,46 @@ export function createRadio(deps: RadioDeps) {
     insert: (rows) => deps.store.insertMemories(rows),
     nextId: () => randomUUID(),
   });
+
+  /** 生成中/已生成待播的段落（id → 内容） */
+  const voiceSegments = new Map<string, VoiceSegment>();
+  /** 已播出的段落（供 /audio/segment/:id 回放引用，按 startedAt 淘汰） */
+  const airedSegments: VoiceSegment[] = [];
+
   const producer = createSegmentProducer({
     llm: deps.llm,
     tts: deps.tts,
     persona: deps.persona,
     stationName: deps.stationName,
     hostName: deps.hostName,
-    speechExamples: deps.speechExamples,
-    retrieveRecentSpeech: () => {
-      const segs = deps.store.listRecentAiredSegments(2);
-      return segs
-        .slice()
-        .reverse()
-        .map((s) => (s.text.length > 120 ? `${s.text.slice(0, 120)}…` : s.text));
-    },
     retrieveMemories: (now) => programmeMemory.retrieve(now),
     tracks,
     maxSegmentChars: deps.maxSegmentChars,
+    maxSegmentCharsByKind: deps.maxSegmentCharsByKind,
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[radio] 段落生成失败（沉默保底，ER-001~003）：${msg}`);
+    },
     view: () => {
       const now = clock.now();
       const snap = engine.getSnapshot(now);
+      const recentAired =
+        airedSegments.length > 0
+          ? airedSegments
+              .filter((s) => s.text.trim().length > 0)
+              .slice(-2)
+              .map((s) => ({ kind: s.kind, text: s.text }))
+          : deps.store
+              .listSegments()
+              .filter((s) => s.status === 'aired' && s.text.trim().length > 0)
+              .sort((a, b) => (a.airedAt ?? 0) - (b.airedAt ?? 0))
+              .slice(-2)
+              .map((s) => ({ kind: s.kind, text: s.text }));
       return {
         now,
         currentTrack: snap.trackId ? (trackById.get(snap.trackId) ?? null) : null,
         recentTracks: snap.recentTracks,
+        recentAired,
       };
     },
   });
@@ -141,11 +158,6 @@ export function createRadio(deps: RadioDeps) {
 
   /** 当前曲目的 play 记录 id（track-ended 时收尾） */
   let currentPlayId: string | null = null;
-
-  /** 生成中/已生成待播的段落（id → 内容） */
-  const voiceSegments = new Map<string, VoiceSegment>();
-  /** 已播出的段落（供 /audio/segment/:id 回放引用，按 startedAt 淘汰） */
-  const airedSegments: VoiceSegment[] = [];
 
   function broadcast(event: ServerEvent): void {
     const payload = JSON.stringify(event);
@@ -205,14 +217,20 @@ export function createRadio(deps: RadioDeps) {
   }): Promise<void> {
     const produced = await producer.produce(plan);
     if (!produced) {
-      console.warn('[radio] 段落生成失败（沉默保底，ER-001~003）');
       engine.onSegmentFailed(plan.id);
+      return;
+    }
+    if (!engine.onSegmentReady(produced.id, produced.durationMs)) {
+      console.warn(
+        `[radio] ⏭️ ${produced.kind}错过播出时机已放弃（沉默保底，非播出）：${produced.text}`,
+      );
       return;
     }
     if (produced.songTrackId) {
       const hit = trackById.get(produced.songTrackId);
       if (hit) {
         engine.onRequestAck(hit.title);
+        scheduler.queueTrack(hit.id);
         console.log(`[radio] 🎵 点歌受理：《${hit.title}》（${hit.styles.join('/')}）→ 预告后插播`);
       }
     }
@@ -226,7 +244,6 @@ export function createRadio(deps: RadioDeps) {
       songTrackId: produced.songTrackId,
       replyToIds: plan.replyTo?.map((m) => m.id),
     });
-    engine.onSegmentReady(produced.id, produced.durationMs);
     console.log(
       `[radio] 💬 ${produced.kind}（${(produced.durationMs / 1000).toFixed(1)}s${produced.cached ? '，缓存命中' : ''}）：${produced.text}`,
     );

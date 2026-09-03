@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { groupSpeechParts, joinLinesText, normalizeSpeechLines, type SpeechLine } from './speech';
+import {
+  clipSpokenText,
+  groupSpeechParts,
+  joinLinesText,
+  normalizeSpeechLines,
+  type SpeechLine,
+} from './speech';
 
 const lines = (): SpeechLine[] => [
   { text: '刚下班吧，先别急着找遥控器。', speed: 0.95, emotion: 'calm', pauseAfterSec: 0.6 },
@@ -69,6 +75,18 @@ describe('normalizeSpeechLines', () => {
       { maxChars: 12 },
     );
     expect(joinLinesText(out)).toBe('一二三四五。六七八九十。');
+  });
+});
+
+describe('clipSpokenText', () => {
+  it('按句丢弃超出上限的尾巴，不切半句', () => {
+    expect(clipSpokenText('一二三四五。六七八九十。十一十二十三。', 12)).toBe(
+      '一二三四五。六七八九十。',
+    );
+  });
+
+  it('第一句就超长才硬切', () => {
+    expect(clipSpokenText('一二三四五六七八九十', 5)).toBe('一二三四五');
   });
 });
 

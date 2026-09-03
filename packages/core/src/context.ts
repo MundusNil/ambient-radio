@@ -1,9 +1,12 @@
 /**
- * 上下文构建器（技术设计 §4.3）：把人格 + 时间 + 曲目 + 段落意图组装成 LLM prompt。
+ * 上下文构建器（技术设计 §4.3）：把人格 + 曲目/留言/记忆 + 段落意图组装成 LLM prompt。
  * Aitune 六要素砍一留五：无 User Profile（D1/D2）。
  * 纯逻辑零 IO：persona 内容由调用方传入（组装层读文件）。
+ *
+ * 装配纪律（2026-09-03 起，选项 A）：
+ * 不注入报时/moodHint、不把曲名塞进常规串场、不要求逐句韵律；
+ * 上一段口播只作「不要续写」护栏，不当酒馆燃料。
  */
-
 import type { DayPartContext } from './time';
 import type { MemoryKind, SegmentKind } from './types';
 
@@ -11,6 +14,11 @@ export interface TrackBrief {
   title: string;
   artist: string | null;
   styles: string[];
+}
+
+export interface AiredBrief {
+  kind: SegmentKind;
+  text: string;
 }
 
 export interface SegmentPromptContext {
@@ -28,10 +36,8 @@ export interface SegmentPromptContext {
   ackTitle?: string;
   /** L1 节目记忆（P3，FR-071/072：基于真实节目经历延续话题） */
   memories?: Array<{ kind: MemoryKind; text: string; importance: number }>;
-  /** 近期已出口播，按时间从旧到新 */
-  recentSpeech?: string[];
-  /** 口吻样本原文（对话式下不再强制注入） */
-  speechExamples?: string;
+  /** 最近已播口播：只用来禁止续写/重复开场，不当续聊燃料 */
+  recentAired?: AiredBrief[];
 }
 
 export interface SegmentPrompt {
@@ -39,67 +45,64 @@ export interface SegmentPrompt {
   user: string;
 }
 
-/** 各段落类型的意图简述（对应 FR-032/033：不设字数上下限，只约束「说完」） */
+/** 各段落类型的意图简述：只约束「说什么、说到哪停」，不给字数下限，不教具体意象 */
 const KIND_BRIEF: Record<SegmentKind, string> = {
   station_id:
-    '台呼：非个人化的电台识别，一句话，带出电台名即可；不得点名、欢迎或识别当前听众，不说「欢迎回来」这类措辞。',
-  interlude: '常规串场。想到哪儿说哪儿，三五个字也行，说开了几百字也行——把这件小事说完再停。',
-  topic: '小主题：可以展开，几十字到几百字都行。有开头，不一定要正式收尾，讲完你想讲的那一层就停。',
+    '台呼：一句话带出电台名即可；不得点名、欢迎或识别当前听众，不说「欢迎回来」这类措辞。',
+  interlude:
+    '常规串场：可以只从音乐给你的感觉里轻轻带一句，也可以几乎什么都不解释；不要描写房间、街道、店、猫或任何你看不见的布景。话少不硬撑，说完就停。',
+  topic:
+    '小主题：只展开一件真实的节目事（你记得的承诺、听众追问过的、已经长出来的梗）。不要写成连续剧或街景。讲完想讲的那一层就停。',
   reply:
     '回应听众留言：合并理解相关内容再回应；用泛称指代听众，不点名；不确定的不接；把回应说完，别停在半路。',
-  request_ack: '点歌回应：接受、延后或婉拒都可以，语气符合人格；不进入任何「模式」话术。',
+  request_ack: '点歌回应：这首已经受理，预告即将安排；语气符合人格；不进入任何「模式」话术。',
 };
 
-const SYSTEM_RULES = `你是梦可，一台 AI 氛围电台的主播，正在直播。音乐在响。
+const SYSTEM_RULES = `你是{HOST_NAME}，一台 AI 氛围电台的主播，正在直播。音乐在响。听众在听，你是节目的主持人。
 
 <persona>
 {PERSONA}
 </persona>
 
-【你在做什么】
-- 只有音乐的电台，听众偶尔留言。你按自己的节奏说话，像跟旁边的人随口聊。
-- 想确认作品背景可以搜。没把握就轻轻带过。
+你的电台叫「{STATION_NAME}」。需要报台名或自我介绍时报这个名字，平时不必反复提。
+
+【你的节目】
+- 只有音乐的电台，听众偶尔留言。音乐是主体，你只在合适的时候开口。沉默是节目的一部分，不要为了填空隙去编场景。
+- 每段都是独立、完整的一段：说完就停，不要留半句等下次接——下次开口隔很久，半句话接不上。
+- 不要把多段口播连成一部连续剧。上一段里的角色、道具、镜头到此为止。
 
 【怎么开口】
-- 长短随便：三个字可以，兴起了多说也行。多数时候短一点。
-- 想到什么就说什么，说完就停。不要留半句等下次接——下次开口隔很久，半句话接不上。
-
-【怎么说：逐句标注】
-- 把要说的话拆成一句一句，每句给两个值：
-  - emotion（情绪）：happy / sad / angry / fearful / disgusted / surprised / calm 之一；拿不准就不填，让声音自己走。
-  - pause（这句说完停多久，0~2 秒）：想一下、叹口气、留个白，都靠它。常用 0.3~0.6，别每句都停一样久——长句后停久些，短句后面可以不停。
-- 语速由系统统一固定，你不用给、也改不了：保持一个稳定舒服的语速，把快慢变化交给情绪和停顿去表达。
-- 相邻几句情绪相同时，系统会自动合成一次，你不用替它操心。
+- 素材只来自：正在响的音乐给你的感觉、听众留言、你记得的真实节目事。不要凭空搭房间、街景、店、路过的人、猫、门槛、糖水铺。
+- 不报时式开场（不要「现在是周X的…」「周一的清晨」「傍晚的光」这类起头），不逐首报幕（不要念歌名当 DJ），不预告接下来放什么，不用「希望你…」这类客套收尾。
+- 想确认作品背景可以搜。没把握就轻轻带过，不把没核实的事当事实说。
+- 不要写分镜：不要一句一个镜头，不要给每句话标情绪和停顿。
 
 【输出】
-- 严格 JSON：{"lines":[{"text":"要说的话","emotion":"calm","pause":0.4}],"songRequest":null}
-- text 只写要念出来的普通话口语：不要前缀、标题、括号、舞台指示、表情符号。一句一行。
-- 不要写 <#0.5#> 这类标记，停顿一律写在 pause 字段里。
+- 严格 JSON：{"text":"要念出来的普通话口语","songRequest":null}
+- text 只写要播出的话：不要前缀、标题、括号、舞台指示、表情符号、<#0.5#> 这类标记。
 - songRequest 仅当听众留言明显在点歌时填 {"query":"歌名或风格"}，否则 null。
 `;
 
 export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
-  const system = SYSTEM_RULES.replace('{PERSONA}', ctx.persona.trim());
+  const hostName = ctx.hostName.trim() || '梦可';
+  const system = SYSTEM_RULES.replace('{PERSONA}', ctx.persona.trim())
+    .replace('{STATION_NAME}', ctx.stationName.trim())
+    .replace('{HOST_NAME}', hostName);
 
   const lines: string[] = [];
-  if (ctx.currentTrack) {
+  const nameTracks = ctx.kind === 'reply' || ctx.kind === 'request_ack';
+  if (nameTracks && ctx.currentTrack) {
     const artist = ctx.currentTrack.artist ? `，${ctx.currentTrack.artist}` : '';
-    lines.push(
-      `电台正在播放《${ctx.currentTrack.title}》${artist}（${ctx.currentTrack.styles.join('/')}）。`,
-    );
-  } else {
-    lines.push('电台刚好处在换曲的间隙。');
+    const styles =
+      ctx.currentTrack.styles.length > 0 ? `（${ctx.currentTrack.styles.join('/')}）` : '';
+    lines.push(`电台正在播放《${ctx.currentTrack.title}》${artist}${styles}。`);
   }
-  if (ctx.recentTracks.length > 0) {
+  if (nameTracks && ctx.recentTracks.length > 0) {
     const recent = ctx.recentTracks
       .slice(0, 3)
       .map((t) => `《${t.title}》`)
       .join('');
     lines.push(`这之前播过${recent}。`);
-  }
-  if (ctx.recentSpeech && ctx.recentSpeech.length > 0) {
-    const quoted = ctx.recentSpeech.map((s) => `- 「${s}」`).join('\n');
-    lines.push(`你刚才说过（别重复同一段话）：\n${quoted}`);
   }
   if (ctx.replyTo && ctx.replyTo.length > 0) {
     const quoted = ctx.replyTo.map((m) => `「${m.body}」`).join('、');
@@ -110,14 +113,16 @@ export function buildSegmentPrompt(ctx: SegmentPromptContext): SegmentPrompt {
   }
   if (ctx.memories && ctx.memories.length > 0) {
     const remembered = ctx.memories.map((m) => `[${m.kind}] ${m.text}`).join('\n');
-    lines.push(`你记得的节目历史（只可引用这些真实发生过的事，禁止编造或扩展）：\n${remembered}`);
+    lines.push(
+      `你记得的节目历史（只可引用这些真实发生过的事，禁止编造或扩展；引用点到为止，不要扩写成场景描写）：\n${remembered}`,
+    );
   }
-  if (ctx.speechExamples) {
-    lines.push(`口吻参考（学语气，不抄内容）：\n${ctx.speechExamples}`);
+  if (ctx.recentAired && ctx.recentAired.length > 0) {
+    const quoted = ctx.recentAired.map((s, i) => `${i + 1}. ${s.text.trim()}`).join('\n');
+    lines.push(`刚才播出过（不要续写其中的情节、角色或场景，也不要用同一套开场）：\n${quoted}`);
   }
-  lines.push(`房间：此刻${ctx.dayPart.weekdayZh}${ctx.dayPart.label}，${ctx.dayPart.moodHint}。`);
   lines.push('');
-  lines.push(`现在开口——${KIND_BRIEF[ctx.kind]}想到什么说什么，说完再停。不必提到正在放的歌。`);
+  lines.push(`现在开口，${KIND_BRIEF[ctx.kind]}说完再停。`);
 
   return { system, user: lines.join('\n') };
 }

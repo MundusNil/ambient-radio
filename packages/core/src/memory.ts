@@ -89,9 +89,9 @@ export function createProgrammeMemory(options: {
       );
       const rows: MemoryRecordL1[] = [];
       for (const m of extracts) {
+        if (isAtmosphereMemory(m.text)) continue;
         const key = memoryKey(m.kind, m.text);
         if (seen.has(key)) continue;
-        seen.add(key);
         rows.push({
           id: options.nextId(),
           kind: m.kind,
@@ -117,7 +117,7 @@ export const MEMORY_EXTRACTION_SYSTEM = `你是电台节目的记忆策展人。
 - event：重要的节目事件（点歌受理、特别的互动）
 
 不要记录（即使主播说了很多遍）：
-- 一次性氛围布景：吧台、便利店、车站、橘猫、空座位、像素小物件等。那是当下开口的闲聊，不是节目栏目。
+- 一次性氛围布景：吧台、便利店、车站、橘猫、空座位、像素小物件、糖水铺、门槛、暖光、街对面的店等。那是当下开口的闲聊，不是节目栏目。
 - 对刚播过的口播内容的复述或摘要
 - 可以联网再搜到的作品设定、曲目介绍
 - 没有未完约定、听众没追问的轻松话题
@@ -129,7 +129,34 @@ export const MEMORY_EXTRACTION_SYSTEM = `你是电台节目的记忆策展人。
 - 绝对禁止：编造未播出的事实（FR-074）
 - 最多 3 条；text 用一句中立、匿名的节目事实描述`;
 
-/** 解析记忆提取；失败/无内容 → 空数组（策展：宁可漏记不可乱记） */
+/** 布景词：提取模型仍可能把连续剧写成「可延续话题」，入库前硬丢掉。 */
+const ATMOSPHERE_MARKERS = [
+  '吧台',
+  '便利店',
+  '车站',
+  '橘猫',
+  '空座位',
+  '像素',
+  '小店',
+  '糖水',
+  '门槛',
+  '铜铃',
+  '姜糖',
+  '三花',
+  '街对面',
+  '路灯',
+  '门帘',
+  '暖光',
+  '小角落',
+  '人行道',
+  '扎马尾',
+] as const;
+
+export function isAtmosphereMemory(text: string): boolean {
+  return ATMOSPHERE_MARKERS.some((marker) => text.includes(marker));
+}
+
+/** 解析记忆提取；失败/无内容/布景 → 空（策展：宁可漏记不可乱记） */
 export function parseMemoryExtraction(raw: string): MemoryExtraction[] {
   try {
     const parsed = JSON.parse(raw.trim()) as {
@@ -141,7 +168,8 @@ export function parseMemoryExtraction(raw: string): MemoryExtraction[] {
         (m): m is { kind: MemoryExtraction['kind']; text: string; importance?: number } =>
           typeof m.text === 'string' &&
           m.text.trim().length > 0 &&
-          (m.kind === 'topic' || m.kind === 'promise' || m.kind === 'meme' || m.kind === 'event'),
+          (m.kind === 'topic' || m.kind === 'promise' || m.kind === 'meme' || m.kind === 'event') &&
+          !isAtmosphereMemory(m.text),
       )
       .map((m) => ({
         kind: m.kind,

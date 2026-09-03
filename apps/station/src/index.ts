@@ -10,7 +10,7 @@ import { getDayPartContext } from '@ambient-radio/core';
 import { serve } from '@hono/node-server';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
-import { loadSpeechExamples, scanLibrary } from './library';
+import { scanLibrary } from './library';
 import { findRepoRoot } from './paths';
 import { createRadio } from './radio';
 
@@ -45,13 +45,11 @@ async function main(): Promise<void> {
     );
   }
   const persona = readFileSync(resolve(repoRoot, 'config', 'persona.md'), 'utf-8');
-  const speechExamples = loadSpeechExamples(resolve(repoRoot, 'config', 'speech-examples.md'));
 
   const radio = createRadio({
     stationName: config.station.name,
     hostName: config.station.host,
     persona,
-    speechExamples,
     engineConfig: config.engine,
     schedulerConfig: config.scheduler,
     ducking: config.audio.ducking,
@@ -80,6 +78,7 @@ async function main(): Promise<void> {
     retentionDays: config.messages.retentionDays,
     memoryConfig: config.memory,
     maxSegmentChars: config.llm.maxSegmentChars,
+    maxSegmentCharsByKind: config.llm.maxSegmentCharsByKind,
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

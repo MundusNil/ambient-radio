@@ -38,8 +38,6 @@ export interface Store {
   listRecentPlays(sinceMs: number): RecentPlay[];
   insertSegment(segment: Segment): void;
   listSegments(): Segment[];
-  /** 最近已播口播（有界查询：避免每次生成全表扫描） */
-  listRecentAiredSegments(limit: number): Segment[];
   /** 原始留言入库（FR-091：后台短期保留，7 天后自动删除 FR-092） */
   insertMessage(message: StoredMessage): void;
   listActiveMessages(now: number): StoredMessage[];
@@ -248,27 +246,6 @@ export function createStore(dbPath: string): Store {
         status: r.status,
       }));
     },
-    listRecentAiredSegments(limit: number): Segment[] {
-      const rows = db
-        .prepare(
-          `SELECT * FROM segments
-           WHERE status = 'aired' AND aired_at IS NOT NULL AND text != ''
-           ORDER BY aired_at DESC
-           LIMIT ?`,
-        )
-        .all(limit) as SegmentRow[];
-      return rows.map((r) => ({
-        id: r.id,
-        kind: r.kind,
-        text: r.text,
-        audioPath: r.audio_path,
-        durationMs: r.duration_ms,
-        plannedAt: r.planned_at,
-        airedAt: r.aired_at,
-        status: r.status,
-      }));
-    },
-
     insertMessage(message: StoredMessage): void {
       db.prepare(
         'INSERT INTO messages (id, body, received_at, expires_at) VALUES (?, ?, ?, ?)',

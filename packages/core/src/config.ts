@@ -16,11 +16,11 @@ export interface SchedulerConfig {
 }
 
 export interface EngineConfig {
-  /** FR-031：主动串场间隔采样区间（8~12 次/小时） */
+  /** FR-031：主动串场间隔采样区间（8~12 次/小时，30 分钟约 4~6 次） */
   talkIntervalMs: [number, number];
   /** 相邻两段之间的最小间隔（保护性下限） */
   minTalkGapMs: number;
-  /** FR-055：留言 prefer 时限——到期后在自然节点优先回应 */
+  /** FR-055：留言 prefer 时限——到期后在自然节点优先回应（0 = 下一个自然节点立刻回） */
   preferReplyMs: number;
   /** FR-055/ER-007：留言 force 时限——到期后放宽节点尽快回应（故障期由组装层暂停） */
   forceReplyMs: number;
@@ -48,10 +48,10 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
 };
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
-  talkIntervalMs: [150 * 1000, 240 * 1000],
+  talkIntervalMs: [300 * 1000, 480 * 1000],
   minTalkGapMs: 90 * 1000,
-  preferReplyMs: 20 * 1000,
-  forceReplyMs: 45 * 1000,
+  preferReplyMs: 0,
+  forceReplyMs: 20 * 1000,
   topicCooldownMs: 40 * 60 * 1000,
   topicChance: 0.15,
   nodeWindow: {

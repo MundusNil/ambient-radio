@@ -55,7 +55,8 @@ export interface Engine {
   /** 每秒调用；返回本 tick 的意图事件（幂等：状态转换的那一 tick 才发） */
   tick(now: number): EngineEvent[];
   onTrackStarted(track: Track, at: number): void;
-  onSegmentReady(id: string, durationMs: number): void;
+  /** 段落就绪上报：返回是否被引擎接受。错过曲目边界/超时已被丢弃（60% 预取，沉默保底）时返回 false，组装层不得再入库/误报播出 */
+  onSegmentReady(id: string, durationMs: number): boolean;
   onSegmentFailed(id: string): void;
   onListenersChanged(count: number): void;
   /** 收到一条听众留言（P2：进入 SLA 回应队列） */
@@ -99,7 +100,7 @@ export function createEngine(options: EngineOptions): Engine {
   let stationIdDue = false;
   let seq = 0;
   const recentTracks: Track[] = [];
-  /** P2：待回应留言（按到达顺序；SLA 45s 优先 / 90s force） */
+  /** P2：待回应留言（按到达顺序；prefer 下一个自然节点 / force 到期放宽尾奏） */
   const replyQueue: Array<{ id: string; body: string; receivedAt: number }> = [];
   /** P2：待播的点歌预告（一次一条） */
   let ackTitle: string | null = null;
@@ -289,11 +290,14 @@ export function createEngine(options: EngineOptions): Engine {
     }
   }
 
-  function onSegmentReady(id: string, durationMs: number): void {
+  function onSegmentReady(id: string, durationMs: number): boolean {
     if (pending && pending.id === id) {
       pending.state = 'ready';
       pending.durationMs = durationMs;
+      return true;
     }
+    // 段落已被丢弃（曲目边界未就绪 / 超时）：返回 false，组装层知道后不入待播表
+    return false;
   }
 
   function onSegmentFailed(id: string): void {

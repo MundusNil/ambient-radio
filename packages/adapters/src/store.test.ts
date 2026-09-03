@@ -1,4 +1,4 @@
-import type { Segment, Track } from '@ambient-radio/core';
+import type { Track } from '@ambient-radio/core';
 import { describe, expect, it } from 'vitest';
 import { createStore } from './store';
 
@@ -79,43 +79,6 @@ describe('store · segments（节目记录，P3 记忆的基础）', () => {
     });
     expect(store.listSegments()).toHaveLength(1);
     expect(store.listSegments()[0]).toMatchObject({ kind: 'interlude', text: '你好' });
-  });
-  it('listRecentAiredSegments 按 aired_at 倒序有界返回已播非空口播', () => {
-    const store = createStore(':memory:');
-    const segment = (id: string, airedAt: number, text: string, status: Segment['status']) => ({
-      id,
-      kind: 'interlude' as const,
-      text,
-      audioPath: `/tmp/${id}.mp3`,
-      durationMs: 5000,
-      plannedAt: airedAt - 500,
-      airedAt,
-      status,
-    });
-    for (const s of [
-      segment('seg-old', 1_000_000, '最早一条', 'aired'),
-      segment('seg-mid', 3_000_000, '中间一条', 'aired'),
-      segment('seg-new', 5_000_000, '最新一条', 'aired'),
-      segment('seg-new2', 4_000_000, '次新一条', 'aired'),
-      segment('seg-new3', 2_000_000, '更早一条', 'aired'),
-      segment('seg-planned', 6_000_000, '未播计划', 'planned'),
-      segment('seg-empty', 7_000_000, '', 'aired'),
-    ]) {
-      store.insertSegment(s);
-    }
-    expect(store.listRecentAiredSegments(3).map((s) => s.text)).toEqual([
-      '最新一条',
-      '次新一条',
-      '中间一条',
-    ]);
-    expect(store.listRecentAiredSegments(10)).toHaveLength(5);
-    expect(store.listRecentAiredSegments(10).map((s) => s.text)).toEqual([
-      '最新一条',
-      '次新一条',
-      '中间一条',
-      '更早一条',
-      '最早一条',
-    ]);
   });
 });
 

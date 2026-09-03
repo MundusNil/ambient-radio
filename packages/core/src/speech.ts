@@ -104,6 +104,21 @@ function normalizePause(raw: unknown): number | undefined {
   return round2(clamp(n, 0, MAX_PAUSE_SEC));
 }
 
+/** 口播硬上限：按句切开，超出的整句丢掉；第一句就超长才硬切。 */
+export function clipSpokenText(text: string, maxChars: number): string {
+  const cleaned = stripMarkup(text).trim();
+  if (cleaned.length <= maxChars) return cleaned;
+  const parts = cleaned.split(/(?<=[。！？!?])/);
+  let out = '';
+  for (const part of parts) {
+    if (part.length === 0) continue;
+    if (out.length + part.length > maxChars) break;
+    out += part;
+  }
+  if (out.length > 0) return out.trim();
+  return cleaned.slice(0, maxChars);
+}
+
 /**
  * 把 LLM 给的原始行清洗成可信的韵律行：
  * 去空行与标记、夹取语速与停顿、情绪归一到白名单、最后一句不留停顿、总字数截断。

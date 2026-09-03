@@ -26,15 +26,20 @@ const ttsOk: TtsClient = {
   synthesize: async () => ({ filePath: '/tmp/seg.mp3', durationMs: 4200, cached: false }),
 };
 
-const producerOf = (overrides: { llm?: LlmClient; tts?: TtsClient; tracks?: Track[] } = {}) =>
+const producerOf = (
+  overrides: {
+    llm?: LlmClient;
+    tts?: TtsClient;
+    tracks?: Track[];
+    onError?: (err: unknown) => void;
+  } = {},
+) =>
   createSegmentProducer({
     llm: overrides.llm ?? llmOk(),
     tts: overrides.tts ?? ttsOk,
     persona: PERSONA,
     stationName: '梦可电台',
     hostName: '梦可',
-    speechExamples: '',
-    retrieveRecentSpeech: () => [],
     retrieveMemories: () => [],
     tracks: overrides.tracks ?? [track],
     view: () => ({
@@ -42,6 +47,7 @@ const producerOf = (overrides: { llm?: LlmClient; tts?: TtsClient; tracks?: Trac
       currentTrack: track,
       recentTracks: [],
     }),
+    onError: overrides.onError,
   });
 
 describe('段落生产 · 就绪', () => {
@@ -60,20 +66,59 @@ describe('段落生产 · 就绪', () => {
       songTrackId: null,
     });
   });
-});
 
-describe('段落生产 · 沉默保底', () => {
-  it('LLM 失败时放弃该段落，不抛错', async () => {
-    const producer = producerOf({
+  it('把最近已播口播交给提示词作禁止续写护栏，常规串场不点曲名', async () => {
+    let user = '';
+    const producer = createSegmentProducer({
       llm: {
-        generateSegment: async () => {
-          throw new Error('LLM HTTP 500');
+        generateSegment: async (prompt) => {
+          user = prompt.user;
+          return { text: '风很轻。', songRequest: null };
         },
         extractMemories: async () => [],
       },
+      tts: ttsOk,
+      persona: PERSONA,
+      stationName: '梦可电台',
+      hostName: '梦可',
+      retrieveMemories: () => [],
+      tracks: [track],
+      view: () => ({
+        now: Date.UTC(2026, 7, 19, 12, 0, 0),
+        currentTrack: track,
+        recentTracks: [],
+        recentAired: [
+          {
+            kind: 'interlude',
+            text: '风里飘来点姜糖的甜。是对面糖水铺刚开锅吧。',
+          },
+        ],
+      }),
     });
+    await producer.produce({ id: 'seg-guard', kind: 'interlude' });
+    expect(user).toContain('不要续写其中的情节、角色或场景');
+    expect(user).toContain('糖水铺');
+    expect(user).not.toContain('《月光小径》');
+  });
+});
 
+describe('段落生产 · 沉默保底', () => {
+  it('LLM 失败时放弃该段落，不抛错，并把原因交给 onError', async () => {
+    const seen: unknown[] = [];
+    const producer = producerOf({
+      llm: {
+        generateSegment: async () => {
+          throw new Error('LLM HTTP 429: SetLimitExceeded');
+        },
+        extractMemories: async () => [],
+      },
+      onError: (err) => {
+        seen.push(err);
+      },
+    });
     await expect(producer.produce({ id: 'seg-fail', kind: 'interlude' })).resolves.toBeNull();
+    expect(seen).toHaveLength(1);
+    expect(String(seen[0])).toContain('SetLimitExceeded');
   });
 
   it('TTS 失败时放弃该段落，不抛错', async () => {
@@ -152,8 +197,6 @@ describe('段落生产 · 逐句韵律', () => {
       persona: PERSONA,
       stationName: '梦可电台',
       hostName: '梦可',
-      speechExamples: '',
-      retrieveRecentSpeech: () => [],
       retrieveMemories: () => [],
       tracks: [track],
       maxSegmentChars: 12,
@@ -167,6 +210,61 @@ describe('段落生产 · 逐句韵律', () => {
     const produced = await producer.produce({ id: 'seg-cap', kind: 'topic' });
 
     expect(produced?.text).toBe('一二三四五。六七八九十。');
+  });
+
+  it('没有韵律行时仍按字数硬上限整句丢弃', async () => {
+    const producer = createSegmentProducer({
+      llm: {
+        generateSegment: async () => ({
+          text: '一二三四五。六七八九十。十一十二十三。',
+          songRequest: null,
+        }),
+        extractMemories: async () => [],
+      },
+      tts: ttsOk,
+      persona: PERSONA,
+      stationName: '梦可电台',
+      hostName: '梦可',
+      retrieveMemories: () => [],
+      tracks: [track],
+      maxSegmentChars: 12,
+      view: () => ({
+        now: Date.UTC(2026, 7, 19, 12, 0, 0),
+        currentTrack: track,
+        recentTracks: [],
+      }),
+    });
+
+    const produced = await producer.produce({ id: 'seg-plain-cap', kind: 'interlude' });
+    expect(produced?.text).toBe('一二三四五。六七八九十。');
+  });
+
+  it('按段落类型覆盖字数上限', async () => {
+    const producer = createSegmentProducer({
+      llm: {
+        generateSegment: async () => ({
+          text: '一二三四五。六七八九十。',
+          songRequest: null,
+        }),
+        extractMemories: async () => [],
+      },
+      tts: ttsOk,
+      persona: PERSONA,
+      stationName: '梦可电台',
+      hostName: '梦可',
+      retrieveMemories: () => [],
+      tracks: [track],
+      maxSegmentChars: 100,
+      maxSegmentCharsByKind: { station_id: 5 },
+      view: () => ({
+        now: Date.UTC(2026, 7, 19, 12, 0, 0),
+        currentTrack: track,
+        recentTracks: [],
+      }),
+    });
+
+    const produced = await producer.produce({ id: 'seg-kind-cap', kind: 'station_id' });
+    expect(produced?.text).toBe('一二三四五');
   });
 });
 
@@ -211,37 +309,5 @@ describe('段落生产 · 点歌匹配', () => {
 
     expect(produced?.songTrackId).toBeNull();
     expect(produced?.text).toContain('库里没有');
-  });
-});
-
-describe('段落生产 · 对话史', () => {
-  it('把近期口播传进 prompt', async () => {
-    let seenUser = '';
-    const producer = createSegmentProducer({
-      llm: {
-        generateSegment: async (prompt) => {
-          seenUser = prompt.user;
-          return { text: '今晚风很轻。', songRequest: null };
-        },
-        extractMemories: async () => [],
-      },
-      tts: ttsOk,
-      persona: PERSONA,
-      stationName: '梦可电台',
-      hostName: '梦可',
-      speechExamples: 'Last Call 这名字也太直白了。',
-      retrieveMemories: () => [],
-      retrieveRecentSpeech: () => ['Last Call 这名字也太直白了。'],
-      tracks: [track],
-      view: () => ({
-        now: Date.UTC(2026, 7, 19, 12, 0, 0),
-        currentTrack: { ...track, styles: ['va11halla'] },
-        recentTracks: [],
-      }),
-    });
-
-    await producer.produce({ id: 'seg-1', kind: 'interlude' });
-
-    expect(seenUser).toContain('Last Call 这名字也太直白了。');
   });
 });

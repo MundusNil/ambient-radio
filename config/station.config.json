@@ -5,10 +5,10 @@
     "port": 9730
   },
   "engine": {
-    "talkIntervalMs": [150000, 240000],
+    "talkIntervalMs": [300000, 480000],
     "minTalkGapMs": 90000,
-    "preferReplyMs": 20000,
-    "forceReplyMs": 45000,
+    "preferReplyMs": 0,
+    "forceReplyMs": 20000,
     "topicCooldownMs": 2400000,
     "topicChance": 0.15,
     "pendingTimeoutMs": 120000,
@@ -42,7 +42,14 @@
     "webSearch": true,
     "timeoutMs": 120000,
     "maxTokens": 2500,
-    "maxSegmentChars": 600
+    "maxSegmentChars": 100,
+    "maxSegmentCharsByKind": {
+      "station_id": 40,
+      "interlude": 100,
+      "topic": 400,
+      "reply": 160,
+      "request_ack": 80
+    }
   },
   "tts": {
     "provider": "minimax",

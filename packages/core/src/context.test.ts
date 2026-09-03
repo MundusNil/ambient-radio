@@ -14,6 +14,12 @@ const ctx = {
   recentTracks: [{ title: '晨雾', artist: null, styles: ['game-bgm'] }],
 };
 
+/** 2026-09-02 已播失败样例：糖水铺连续剧。护栏必须看见它并禁止续写。 */
+const SUGAR_SHOP_SERIAL = [
+  '风里飘来点姜糖的甜。是对面糖水铺刚开锅吧。扎马尾的姑娘掀了帘子进去。',
+  '它在门槛边蹲住了。尾巴盘成个小毛圈。没敢往里蹭。铜铃又轻响了一声。',
+];
+
 describe('buildSegmentPrompt', () => {
   it('system 注入人格全文与直播规则', () => {
     const p = buildSegmentPrompt(ctx);
@@ -22,11 +28,30 @@ describe('buildSegmentPrompt', () => {
     expect(p.system).not.toContain('{PERSONA}');
   });
 
-  it('user 含时段、正在播的曲与近期曲目（FR-036）', () => {
+  it('system 注入配置的电台名，台呼不用自报「氛围电台」', () => {
+    const p = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
+    expect(p.system).toContain('你的电台叫「梦可电台」');
+    expect(p.system).not.toContain('{STATION_NAME}');
+  });
+
+  it('常规串场不把曲名、时段、moodHint 写成开口指令', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.user).toContain('周三');
+    expect(p.user).not.toContain('《月光小径》');
+    expect(p.user).not.toContain('《晨雾》');
+    expect(p.user).not.toContain('周三');
+    expect(p.user).not.toContain('渐暗');
+    expect(p.user).not.toContain('此刻');
+    expect(p.system).toContain('不报时式开场');
+  });
+
+  it('reply 才给正在播的曲名，便于回应点歌或问歌', () => {
+    const p = buildSegmentPrompt({
+      ...ctx,
+      kind: 'reply',
+      replyTo: [{ id: 'm1', body: '这首是什么' }],
+    });
     expect(p.user).toContain('《月光小径》');
-    expect(p.user).toContain('《晨雾》');
+    expect(p.user).toContain('这首是什么');
   });
 
   it('台呼约束明确禁止点名与「欢迎回来」（FR-005）', () => {
@@ -35,7 +60,7 @@ describe('buildSegmentPrompt', () => {
     expect(p.user).toContain('欢迎回来');
   });
 
-  it('各段落都不再设字数上限或下限（长度自由，FR-032/033）', () => {
+  it('串场只约束意图不设字数门禁（FR-032/033），但不再教具体意象', () => {
     const interlude = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
     const topic = buildSegmentPrompt({ ...ctx, kind: 'topic' });
     const stationId = buildSegmentPrompt({ ...ctx, kind: 'station_id' });
@@ -46,8 +71,8 @@ describe('buildSegmentPrompt', () => {
       expect(p.user).not.toContain('200~450 字');
       expect(p.user).not.toContain('15~35 字');
     }
-    expect(interlude.user).toContain('三五个字也行');
-    expect(topic.user).toContain('几十字到几百字都行');
+    expect(interlude.user).toContain('话少不硬撑');
+    expect(interlude.user).toContain('不要描写房间');
   });
 
   it('开口说完就停，不留半句给下次', () => {
@@ -57,26 +82,28 @@ describe('buildSegmentPrompt', () => {
     expect(p.user).toContain('说完再停');
   });
 
-  it('逐句韵律：system 要求每句给出 emotion / pause，不再要求 speed（语速系统固定）', () => {
+  it('文案与韵律解耦：只要整段 text，不要逐句 emotion/pause', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.system).toContain('"lines"');
-    expect(p.system).not.toContain('speed');
-    expect(p.system).toContain('emotion');
-    expect(p.system).toContain('pause');
-    expect(p.system).toContain('happy');
-    expect(p.system).toContain('不要写 <#0.5#> 这类标记');
+    expect(p.system).toContain('"text"');
+    expect(p.system).toContain('songRequest');
+    expect(p.system).not.toContain('"lines"');
+    expect(p.system).not.toContain('emotion');
+    expect(p.system).not.toContain('pause');
+    expect(p.system).toContain('不要写分镜');
   });
 
-  it('近期口播用来避免重复同一段话', () => {
-    const p = buildSegmentPrompt({ ...ctx, recentSpeech: ['灯还亮着。'] });
-    expect(p.user).toContain('你刚才说过');
-    expect(p.user).toContain('别重复同一段话');
+  it('克制规则：禁固定街景连续剧、报时开场、逐首报幕与客套收尾', () => {
+    const p = buildSegmentPrompt(ctx);
+    expect(p.system).toContain('不要凭空搭房间、街景、店');
+    expect(p.system).toContain('不报时式开场');
+    expect(p.system).toContain('不逐首报幕');
+    expect(p.system).toContain('希望你');
   });
 
-  it('换曲间隙没有曲目信息时不出现《》', () => {
+  it('换曲间隙的常规串场也不出现曲名', () => {
     const p = buildSegmentPrompt({ ...ctx, kind: 'interlude', currentTrack: null });
-    expect(p.user).toContain('换曲的间隙');
     expect(p.user).not.toContain('《月光小径》');
+    expect(p.user).not.toContain('换曲的间隙');
   });
 });
 
@@ -120,56 +147,47 @@ describe('buildSegmentPrompt · P3 记忆（FR-071/072）', () => {
     expect(p.user).toContain('只可引用这些真实发生过的事');
   });
 
+  it('记忆引用点到为止，不扩写成场景描写', () => {
+    const p = buildSegmentPrompt({
+      ...ctx,
+      kind: 'interlude',
+      memories: [{ kind: 'topic', text: '聊过亮着灯的小店', importance: 0.5 }],
+    });
+    expect(p.user).toContain('引用点到为止，不要扩写成场景描写');
+  });
+
   it('没有记忆时不出现记忆段落', () => {
     const p = buildSegmentPrompt({ ...ctx, kind: 'interlude' });
     expect(p.user).not.toContain('你记得的节目历史');
   });
 });
 
-describe('buildSegmentPrompt · 酒馆式装配', () => {
-  it('system 主指令短，不含起头灵感立法', () => {
+describe('buildSegmentPrompt · 非酒馆装配', () => {
+  it('没有上一段口播时不注入续聊燃料', () => {
     const p = buildSegmentPrompt(ctx);
-    expect(p.system).toContain('像跟旁边的人随口聊');
-    expect(p.system).not.toContain('开场千变万化');
-    expect(p.user).not.toContain('可选的起头灵感');
-    expect(p.user).not.toContain('起头护栏');
+    expect(p.user).not.toContain('你刚才说');
+    expect(p.user).not.toContain('刚才播出过');
+    expect(p.user).not.toContain('口吻参考');
+    expect(p.user).not.toContain('口吻样本');
   });
 
-  it('近期口播作为对话史出现在曲目信息之后', () => {
+  it('上一段口播只作禁止续写的护栏，不当续聊', () => {
     const p = buildSegmentPrompt({
       ...ctx,
-      recentSpeech: ['Last Call 这名字也太直白了。', '灯还亮着。'],
+      recentAired: SUGAR_SHOP_SERIAL.map((text) => ({ kind: 'interlude' as const, text })),
     });
-    expect(p.user).toContain('Last Call 这名字也太直白了。');
-    expect(p.user).toContain('灯还亮着。');
-    expect(p.user.indexOf('你刚才说')).toBeGreaterThan(p.user.indexOf('《月光小径》'));
-  });
-
-  it('没有近期口播时不出现「你刚才说」', () => {
-    const p = buildSegmentPrompt({ ...ctx, recentSpeech: [] });
+    expect(p.user).toContain('不要续写其中的情节、角色或场景');
+    expect(p.user).toContain('糖水铺');
+    expect(p.user).toContain('门槛');
+    expect(p.user).not.toContain('接着说就好');
     expect(p.user).not.toContain('你刚才说');
   });
 
-  it('示例口播出现在 user 里', () => {
-    const p = buildSegmentPrompt({
-      ...ctx,
-      speechExamples: 'Last Call 这名字也太直白了。',
-    });
-    expect(p.user).toContain('口吻参考');
-    expect(p.user).toContain('Last Call 这名字也太直白了。');
-  });
-
-  it('时段不放在 user 第一行', () => {
+  it('收尾是播报式「现在开口」，不是续聊式「接着说就好」', () => {
     const p = buildSegmentPrompt(ctx);
-    const first = p.user.split('\n')[0] ?? '';
-    expect(first).not.toContain('时段背景');
-    expect(p.user).toContain('周三');
-  });
-
-  it('收尾指令是「说完再停」，不是「请播一段」', () => {
-    const p = buildSegmentPrompt(ctx);
-    expect(p.user).toContain('说完再停');
-    expect(p.user).not.toContain('请播一段');
+    expect(p.user).toContain('现在开口');
     expect(p.user).not.toContain('接着说就好');
+    expect(p.user).not.toContain('请播一段');
+    expect(p.system).not.toContain('写你的下一句');
   });
 });

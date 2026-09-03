@@ -6,7 +6,7 @@ import { buildSegmentPrompt } from './context';
 import type { LlmClient } from './llm';
 import type { MemoryRecordL1 } from './memory';
 import { matchSongRequest } from './request';
-import { joinLinesText, normalizeSpeechLines } from './speech';
+import { clipSpokenText, joinLinesText, normalizeSpeechLines } from './speech';
 import { getDayPartContext } from './time';
 import type { TtsClient } from './tts';
 import type { SegmentKind, Track } from './types';
@@ -32,6 +32,7 @@ export interface StationView {
   now: number;
   currentTrack: Track | null;
   recentTracks: Array<{ title: string; artist: string | null; styles: string[] }>;
+  recentAired?: Array<{ kind: SegmentKind; text: string }>;
 }
 
 export interface SegmentProducerOptions {
@@ -40,13 +41,15 @@ export interface SegmentProducerOptions {
   persona: string;
   stationName: string;
   hostName: string;
-  speechExamples: string;
-  retrieveRecentSpeech: () => string[];
   retrieveMemories: (now: number) => MemoryRecordL1[];
   tracks: Track[];
   view: () => StationView;
   /** 整段口播的字数硬上限（防长篇独白拖垮节奏） */
   maxSegmentChars?: number;
+  /** 按段落类型覆盖字数上限（对齐 FR-032/033） */
+  maxSegmentCharsByKind?: Partial<Record<SegmentKind, number>>;
+  /** 生成失败回调（组装层打日志）；produce 仍返回 null（ER-001~003） */
+  onError?: (err: unknown) => void;
 }
 
 export interface SegmentProducer {
@@ -58,7 +61,6 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
     try {
       const view = options.view();
       const memories = options.retrieveMemories(view.now);
-      const recentSpeech = options.retrieveRecentSpeech();
       const prompt = buildSegmentPrompt({
         kind: plan.kind,
         persona: options.persona,
@@ -69,25 +71,25 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
         recentTracks: view.recentTracks,
         replyTo: plan.replyTo,
         ackTitle: plan.ackTitle,
-        recentSpeech,
-        speechExamples: options.speechExamples,
         memories: memories.map((m) => ({
           kind: m.kind,
           text: m.text,
           importance: m.importance,
         })),
+        recentAired: view.recentAired,
       });
       const draft = await options.llm.generateSegment(prompt);
       let songTrackId: string | null = null;
       if (plan.kind === 'reply' && draft.songRequest?.query) {
         songTrackId = matchSongRequest(options.tracks, draft.songRequest.query)?.id ?? null;
       }
-      // 韵律行（语速/情绪/停顿）优先；模型没给或全空时退回整段文本
-      const lines = normalizeSpeechLines(draft.lines ?? [], {
-        maxChars: options.maxSegmentChars ?? Number.POSITIVE_INFINITY,
-      });
-      const speech = await options.tts.synthesize(lines.length > 0 ? lines : draft.text);
-      const text = lines.length > 0 ? joinLinesText(lines) : draft.text;
+      const maxChars =
+        options.maxSegmentCharsByKind?.[plan.kind] ??
+        options.maxSegmentChars ??
+        Number.POSITIVE_INFINITY;
+      const lines = normalizeSpeechLines(draft.lines ?? [], { maxChars });
+      const text = lines.length > 0 ? joinLinesText(lines) : clipSpokenText(draft.text, maxChars);
+      const speech = await options.tts.synthesize(lines.length > 0 ? lines : text);
       return {
         id: plan.id,
         kind: plan.kind,
@@ -97,7 +99,8 @@ export function createSegmentProducer(options: SegmentProducerOptions): SegmentP
         cached: speech.cached,
         songTrackId,
       };
-    } catch {
+    } catch (err) {
+      options.onError?.(err);
       return null;
     }
   }

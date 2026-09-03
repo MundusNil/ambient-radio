@@ -195,12 +195,21 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     speakWhenAlone: true,
   };
 
-  it('留言 20 秒内不回应；到期后在自然节点优先规划 reply', () => {
+  it('留言到达后若已在自然节点则立即规划 reply（FR-055/056）', () => {
     const e = createEngine({ config: msgCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '今晚的歌好听', receivedAt: 100_000 });
-    expect(e.tick(119_999)).toEqual([]); // 20s 内
-    const events = e.tick(120_000); // due = 100 + 20 = 120s
+    const events = e.tick(100_000);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
+  });
+
+  it('前奏保护期内收到留言，等到自然节点再回应', () => {
+    const e = createEngine({ config: msgCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 900_000), 0);
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 5_000 });
+    expect(e.tick(19_999)).toEqual([]);
+    const events = e.tick(20_000);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
   });
@@ -210,7 +219,7 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '第一条', receivedAt: 100_000 });
     e.onMessage({ id: 'm2', body: '第二条', receivedAt: 101_000 });
-    const events = e.tick(121_000);
+    const events = e.tick(101_000);
     expect(events[0]).toMatchObject({
       type: 'plan-segment',
       kind: 'reply',
@@ -225,11 +234,10 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
     const e = createEngine({ config: msgCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '第一条', receivedAt: 100_000 });
-    const [plan] = e.tick(120_000);
+    const [plan] = e.tick(100_000);
     if (plan?.type !== 'plan-segment') throw new Error('expect plan');
     e.onSegmentFailed(plan.id);
-    // 失败后 pending 已清，due 仍过期：立即重试同一批留言（留言没丢）
-    const retry = e.tick(121_000);
+    const retry = e.tick(101_000);
     expect(retry).toHaveLength(1);
     expect(retry[0]).toMatchObject({
       type: 'plan-segment',
@@ -246,22 +254,19 @@ describe('engine · 留言 SLA（P2，FR-055/056）', () => {
       speakWhenAlone: true,
     };
     const e = createEngine({ config: forceCfg, rng: fixed(0) });
-    e.onTrackStarted(T('a', 300_000), 0);
-    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 245_000 });
-    // 264s：prefer due（245+20）已过，但距曲尾 <10s（非自然节点），不 plan
-    expect(e.tick(264_000)).toEqual([]);
-    // 290s：force 到期（245+45），放宽节点立即 plan
-    const events = e.tick(290_000);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
+    e.onTrackStarted(T('a', 600_000), 0);
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 595_000 });
+    expect(e.tick(595_000)).toEqual([]);
+    const events = e.tick(615_000);
+    expect(events.some((ev) => ev.type === 'plan-segment' && ev.kind === 'reply')).toBe(true);
   });
 
   it('pending 存在时不重复规划（防止同批留言双发）', () => {
     const e = createEngine({ config: msgCfg, rng: fixed(0) });
     e.onTrackStarted(T('a', 900_000), 0);
     e.onMessage({ id: 'm1', body: '在吗', receivedAt: 100_000 });
-    e.tick(120_000); // plan reply
-    expect(e.tick(200_000)).toEqual([]); // 不重复 plan
+    e.tick(100_000);
+    expect(e.tick(200_000)).toEqual([]);
   });
 });
 
@@ -316,10 +321,8 @@ describe('engine · 留言 SLA 不受 minTalkGap 约束（P2 回归）', () => {
     if (plan?.type !== 'plan-segment') throw new Error('expect plan');
     e.onSegmentReady(plan.id, 15_000);
     e.tick(301_000);
-    // gap 期内（316s + 90s = 406s 前）收到留言
     e.onMessage({ id: 'm1', body: '在吗', receivedAt: 320_000 });
-    // 365s：留言 due（320+45），处于 gap 期但应能 plan reply
-    const events = e.tick(365_000);
+    const events = e.tick(320_000);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'reply' });
   });
@@ -361,5 +364,20 @@ describe('engine · 60% 预取（边界段落来不及则放弃）', () => {
     if (again[0]?.type === 'plan-segment' && plan?.type === 'plan-segment') {
       expect(again[0].id).not.toBe(plan.id);
     }
+  });
+
+  it('就绪上报返回是否被接受：被丢弃的段落返回 false，组装层不误报播出', () => {
+    const e = createEngine({ config: prefetchCfg, rng: fixed(0) });
+    e.onTrackStarted(T('a', 100_000), 0);
+    const [plan] = e.tick(60_000);
+    if (plan?.type !== 'plan-segment') throw new Error('expect plan');
+    // 引擎仍持有 → true
+    expect(e.onSegmentReady(plan.id, 15_000)).toBe(true);
+    e.tick(100_000); // 曲目结束 → planned 段被丢弃
+    e.onTrackStarted(T('b', 100_000), 100_000);
+    // 已被丢弃的段落迟到就绪 → false
+    expect(e.onSegmentReady(plan.id, 15_000)).toBe(false);
+    // 未知 id 同样 false
+    expect(e.onSegmentReady('seg-unknown', 15_000)).toBe(false);
   });
 });

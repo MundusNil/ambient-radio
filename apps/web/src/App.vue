@@ -160,11 +160,19 @@ onUnmounted(() => {
         </template>
         <template v-else-if="live && state?.title">
           <span class="np-label">正在播放</span>
-          <span class="np-title">{{ state.title }}</span>
+          <span class="np-title-slot">
+            <Transition name="np-fade">
+              <span :key="state.trackId ?? state.title" class="np-title">{{ state.title }}</span>
+            </Transition>
+          </span>
         </template>
         <template v-else-if="state?.title">
           <span class="np-label">此刻电波里</span>
-          <span class="np-title">{{ state.title }}</span>
+          <span class="np-title-slot">
+            <Transition name="np-fade">
+              <span :key="state.trackId ?? state.title" class="np-title">{{ state.title }}</span>
+            </Transition>
+          </span>
         </template>
         <template v-else>
           <span class="np-label">频率调谐中</span>
@@ -185,13 +193,8 @@ onUnmounted(() => {
 
     <div class="dock">
       <div v-if="live" class="chat">
-        <div class="chat-list" :class="{ empty: messages.length === 0 }">
-          <template v-if="messages.length > 0">
-            <p v-for="m in messages" :key="m.id" class="chat-item">{{ m.body }}</p>
-          </template>
-          <template v-else>
-            <p class="chat-hint">梦可会在这个频率上读到你的留言。</p>
-          </template>
+        <div class="chat-list">
+          <p v-for="m in messages" :key="m.id" class="chat-item">{{ m.body }}</p>
         </div>
         <form class="chat-form" @submit.prevent="sendMessage">
           <label class="sr-only" for="msg">留言</label>

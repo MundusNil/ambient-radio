@@ -15,6 +15,11 @@ dist/
 data/
 .cache/
 
+# AI 工具本地资产：技能文件、代码图谱索引、本地 issue 草稿不入库
+.agents/
+.codegraph/
+.scratch/
+
 # 曲库音频：目录结构进 git，音频文件不进（任意嵌套）
 config/library/**/*.mp3
 config/library/**/*.flac

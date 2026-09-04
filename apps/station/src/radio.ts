@@ -31,6 +31,8 @@ import type { ServerType } from '@hono/node-server';
 import { type Context, Hono } from 'hono';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { DuckingConfig } from './config';
+import type { KeyDef } from './keys';
+import { applyKeys, keyStatus } from './keys';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -80,8 +82,9 @@ export interface RadioDeps {
   tracks: Track[];
   libraryRoot: string;
   clock: Clock;
-  llm: LlmClient;
-  tts: TtsClient;
+  /** 工厂：密钥写入 .env 后原地重建客户端（下次生成即新值，无需重启） */
+  llmFactory: () => LlmClient;
+  ttsFactory: () => TtsClient;
   store: Store;
   /** 原始留言保留天数（FR-092：7 天） */
   retentionDays: number;
@@ -91,11 +94,26 @@ export interface RadioDeps {
   maxSegmentChars: number;
   /** 按段落类型覆盖字数上限（对齐 FR-032/033） */
   maxSegmentCharsByKind?: Partial<Record<SegmentKind, number>>;
+  /** 仓库根 .env 绝对路径（设置面板写密钥用） */
+  envPath: string;
+  /** 面板可配置的密钥白名单（来自 station.config.json 声明的 env 名） */
+  keyDefs: KeyDef[];
 }
 
 export function createRadio(deps: RadioDeps) {
   const { tracks, libraryRoot, clock } = deps;
   const trackById = new Map(tracks.map((t) => [t.id, t]));
+  /** 当前生效的客户端（POST /api/admin/keys 后由工厂重建覆盖） */
+  let currentLlm = deps.llmFactory();
+  let currentTts = deps.ttsFactory();
+  // producer 持有下面两个稳定代理：密钥热重建只换 current*，不用重建 producer
+  const llm: LlmClient = {
+    generateSegment: (prompt) => currentLlm.generateSegment(prompt),
+    extractMemories: (text) => currentLlm.extractMemories(text),
+  };
+  const tts: TtsClient = {
+    synthesize: (input) => currentTts.synthesize(input),
+  };
 
   const engine = createEngine({ config: deps.engineConfig, rng: Math.random });
   const scheduler = createScheduler({
@@ -117,8 +135,8 @@ export function createRadio(deps: RadioDeps) {
   const airedSegments: VoiceSegment[] = [];
 
   const producer = createSegmentProducer({
-    llm: deps.llm,
-    tts: deps.tts,
+    llm,
+    tts,
     persona: deps.persona,
     stationName: deps.stationName,
     hostName: deps.hostName,
@@ -252,7 +270,7 @@ export function createRadio(deps: RadioDeps) {
   /** L1 记忆策展（P3）：播出后提取值得保留的节目事实。失败静默。 */
   async function extractAndStoreMemories(seg: VoiceSegment): Promise<void> {
     try {
-      const extracted = await deps.llm.extractMemories(seg.text);
+      const extracted = await llm.extractMemories(seg.text);
       programmeMemory.ingest(extracted, clock.now());
       if (extracted.length === 0) return;
       console.log(
@@ -349,6 +367,44 @@ export function createRadio(deps: RadioDeps) {
   });
 
   app.get('/api/admin/messages', (c) => c.json(deps.store.listActiveMessages(clock.now())));
+
+  // ---- 设置面板：密钥配置（写 .env + 热生效；单机版无鉴权，同 admin 边界） ----
+
+  /** 只回「是否已配置」，真实值永不出服务器 */
+  app.get('/api/admin/keys', (c) => c.json({ keys: keyStatus(deps.keyDefs) }));
+
+  /** 应用密钥：写入 .env → 同步 process.env → 重建客户端 → 回新状态 */
+  app.post('/api/admin/keys', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: '请求体不是合法 JSON' }, 400);
+    }
+    if (typeof body !== 'object' || body === null || !('updates' in body)) {
+      return c.json({ error: '缺少 updates 对象' }, 400);
+    }
+    const raw = body.updates;
+    if (typeof raw !== 'object' || raw === null) {
+      return c.json({ error: '缺少 updates 对象' }, 400);
+    }
+    const updates: Record<string, string> = {};
+    for (const [name, value] of Object.entries(raw)) {
+      if (typeof value !== 'string') {
+        return c.json({ error: `${name} 的值必须是字符串` }, 400);
+      }
+      updates[name] = value;
+    }
+    try {
+      const result = applyKeys(deps.envPath, deps.keyDefs, updates);
+      currentLlm = deps.llmFactory();
+      currentTts = deps.ttsFactory();
+      console.log(`[radio] 🔑 密钥已更新并写入 .env：${Object.keys(updates).join(', ')}`);
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
 
   /** 维护者审查台页面（P3，FR-100） */
   app.get('/admin', (c) =>

@@ -14,14 +14,14 @@ export interface OrbScheme {
 export const ORB_SCHEMES: readonly OrbScheme[] = [
   // 晴空：Cyan & Sky Blue 极光青蓝
   { id: 'cyan', name: '晴空', colors: ['#67E8F9', '#22D3EE', '#0EA5E9'], accent: '#38BDF8' },
-  // 深海：Deep Indigo & Royal Purple 沉静靛蓝
-  { id: 'indigo', name: '深海', colors: ['#818CF8', '#5B5BD6', '#3730A3'], accent: '#818CF8' },
+  // 深海：Midnight Navy 深邃藏蓝（213°~224° 真蓝渐变，不带紫）
+  { id: 'indigo', name: '深海', colors: ['#60A5FA', '#2B5FC4', '#1E3A8A'], accent: '#60A5FA' },
   // 晨雾：Emerald & Mint Teal 雾光薄荷绿
   { id: 'mint', name: '晨雾', colors: ['#86EFAC', '#34D399', '#0F766E'], accent: '#34D399' },
   // 午后：Amber & Golden Sunset 暖金落日
   { id: 'amber', name: '午后', colors: ['#FDE68A', '#F59E0B', '#B45309'], accent: '#FBBF24' },
-  // 暮色：Neon Violet & Magenta 霓虹暮紫
-  { id: 'violet', name: '暮色', colors: ['#C4B5FD', '#A855F7', '#86198F'], accent: '#A855F7' },
+  // 暮色：暮山紫（「烟光凝而暮山紫」，252°~256° 灰调蓝紫，低饱和不粉）
+  { id: 'violet', name: '暮色', colors: ['#A79BC9', '#6E5F96', '#372E5A'], accent: '#9D8CC8' },
   // 夜樱：Rose Gold & Crimson Bloom 夜樱冷绯
   { id: 'rose', name: '夜樱', colors: ['#FDCFE8', '#FB7185', '#BE123C'], accent: '#FB7185' },
 ];

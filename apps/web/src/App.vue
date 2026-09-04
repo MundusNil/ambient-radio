@@ -3,12 +3,15 @@
 // 控制只有开台/关台 + 总音量（FR-001）；无进度条、无切歌、无回放（PRD §8.2）。
 
 import { planTuneIn, type ServerEvent, type StationState } from '@ambient-radio/shared';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
+  applyKeys as apiApplyKeys,
   calibrate,
   connectWs,
   fetchConfig,
+  fetchKeyStatus,
   fetchState,
+  type KeyStatus,
   type StationInfo,
   type WsHandle,
 } from './api';
@@ -16,7 +19,7 @@ import { RadioAudio } from './audio';
 // biome-ignore lint/correctness/noUnusedImports: used in template
 import GradientBackground from './GradientBackground.vue';
 // biome-ignore lint/correctness/noUnusedImports: used in template
-import { initialScheme, ORB_SCHEMES, type OrbScheme, persistScheme } from './palettes';
+import { initialScheme, ORB_SCHEMES, type OrbScheme, persistScheme, schemeById } from './palettes';
 
 const info = ref<StationInfo | null>(null);
 const state = ref<StationState | null>(null);
@@ -30,13 +33,160 @@ const offAir = ref(false);
 const messages = ref<Array<{ id: string; body: string }>>([]);
 const draft = ref('');
 const sending = ref(false);
-// D4 氛围层配色：右上角设置面板手动切换，localStorage 记忆，切换 2s 颜色滑变
+// D4 氛围层配色：设置弹窗「主题」页手动切换，localStorage 记忆，切换 2s 颜色滑变
 const scheme = ref<OrbScheme>(initialScheme());
+// PyCharm 式设置弹窗：<dialog> 模态；主题改动先预览，「确定/应用」才落库，「取消」回退
 const settingsOpen = ref(false);
+const settingsDialogEl = ref<HTMLDialogElement | null>(null);
+const activeSection = ref<'theme' | 'api'>('theme');
+const pendingSchemeId = ref(scheme.value.id);
 
-function pickScheme(next: OrbScheme): void {
-  scheme.value = next;
-  persistScheme(next.id);
+/** 主题改动只记在 pendingSchemeId：点「应用/确定」才落到 scheme（背景不即时变化） */
+
+function openSettings(): void {
+  settingsOpen.value = true;
+  pendingSchemeId.value = scheme.value.id;
+  activeSection.value = 'theme';
+  keysError.value = '';
+  settingsDialogEl.value?.showModal();
+  // 每次打开都重取：.env 手改/网页应用后掩码点数都是最新的
+  void loadKeys();
+}
+// ---- 设置弹窗「API 管理」：模型密钥（豆包 / MiniMax）----
+// 安全模型：真实值永不出服务器；面板只拿「是否已配置」。
+// 已配置的密钥：框内显示按真实长度生成的掩码（点数=长度，改完一眼可见），
+// 只读 + 禁复制/选择/右键；聚焦即全选掩码，直接打字/粘贴整体覆盖；pristine 标记防 • 混进新值。
+const keyStatuses = ref<KeyStatus[]>([]);
+const keysLoading = ref(false);
+const keysLoaded = ref(false);
+const keyDrafts = ref<Record<string, string>>({});
+const keyEditing = ref<Record<string, boolean>>({});
+const keyPristine = ref<Record<string, boolean>>({});
+const keysApplying = ref(false);
+const keysError = ref('');
+const keysSaved = ref(false);
+let keysSavedTimer: ReturnType<typeof setTimeout> | undefined;
+
+const hasKeyDrafts = computed(() =>
+  Object.values(keyDrafts.value).some((v) => v.trim().length > 0),
+);
+/** 按厂商分组（火山引擎一组、MiniMax 一组），保持服务端声明顺序 */
+const keyGroups = computed(() => {
+  const groups: Array<{ group: string; keys: KeyStatus[] }> = [];
+  for (const k of keyStatuses.value) {
+    const last = groups[groups.length - 1];
+    if (last && last.group === k.group) last.keys.push(k);
+    else groups.push({ group: k.group, keys: [k] });
+  }
+  return groups;
+});
+
+/** 有未保存改动才允许确定/应用（PyCharm：Apply 只在 dirty 时可用） */
+const canApply = computed(() => pendingSchemeId.value !== scheme.value.id || hasKeyDrafts.value);
+
+async function applySettings(closeAfter: boolean): Promise<void> {
+  const next = schemeById(pendingSchemeId.value);
+  if (next.id !== scheme.value.id) {
+    scheme.value = next;
+    persistScheme(next.id);
+  }
+  if (hasKeyDrafts.value) {
+    const ok = await applyKeyUpdates();
+    if (!ok && closeAfter) return; // 密钥写入失败：弹窗留在原地报错，不关
+  }
+  if (closeAfter) settingsDialogEl.value?.close();
+}
+
+function onSettingsClose(): void {
+  settingsOpen.value = false;
+  // 取消 / ESC / 点遮罩：丢弃未应用的密钥草稿与待选主题（scheme 本就未变）
+  keyDrafts.value = {};
+  keyEditing.value = {};
+}
+
+async function loadKeys(): Promise<void> {
+  if (keysLoading.value) return;
+  keysLoading.value = true;
+  keysError.value = '';
+  try {
+    keyStatuses.value = await fetchKeyStatus();
+    keysLoaded.value = true;
+  } catch {
+    keysError.value = '密钥状态读取失败：电台服务未连接';
+  } finally {
+    keysLoading.value = false;
+  }
+}
+
+function startEditKey(env: string, el: EventTarget | null): void {
+  const configured = keyStatuses.value.some((k) => k.env === env);
+  const hasDraft = (keyDrafts.value[env] ?? '').length > 0;
+  keyEditing.value = { ...keyEditing.value, [env]: true };
+  keyPristine.value = { ...keyPristine.value, [env]: configured && !hasDraft };
+  nextTick(() => {
+    if (!(el instanceof HTMLInputElement)) return;
+    if (keyPristine.value[env]) {
+      // 掩码原样留在框里：聚焦即全选，一打字/粘贴整体替换
+      el.select();
+    } else {
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    }
+  });
+}
+
+function onKeyKeydown(env: string, e: KeyboardEvent): void {
+  // 掩码未触碰时按方向键会取消全选；下一个可打印键先重新全选
+  if (keyPristine.value[env] && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    (e.target as HTMLInputElement).select();
+  }
+}
+
+function onKeyInput(env: string, el: EventTarget | null): void {
+  if (el instanceof HTMLInputElement) {
+    // 兜底：漏进来的前导掩码不进草稿（服务端还有一道 ASCII 防线）
+    const value = keyPristine.value[env] ? el.value.replace(/^•+/, '') : el.value;
+    keyPristine.value = { ...keyPristine.value, [env]: false };
+    keyDrafts.value = { ...keyDrafts.value, [env]: value };
+  }
+}
+
+function onKeyBlur(env: string): void {
+  // 没输入过新值（或输入后又清空）：丢弃草稿，退回掩码只读态
+  if (!(keyDrafts.value[env] ?? '').trim()) {
+    const rest = { ...keyDrafts.value };
+    delete rest[env];
+    keyDrafts.value = rest;
+    keyEditing.value = { ...keyEditing.value, [env]: false };
+    keyPristine.value = { ...keyPristine.value, [env]: false };
+  }
+}
+async function applyKeyUpdates(): Promise<boolean> {
+  const updates: Record<string, string> = {};
+  for (const [env, value] of Object.entries(keyDrafts.value)) {
+    const trimmed = value.trim();
+    if (trimmed) updates[env] = trimmed;
+  }
+  if (Object.keys(updates).length === 0) return true;
+  keysApplying.value = true;
+  keysError.value = '';
+  try {
+    const res = await apiApplyKeys(updates);
+    keyStatuses.value = res.status;
+    keyDrafts.value = {};
+    keyEditing.value = {};
+    keysSaved.value = true;
+    clearTimeout(keysSavedTimer);
+    keysSavedTimer = setTimeout(() => {
+      keysSaved.value = false;
+    }, 2500);
+    return true;
+  } catch (err) {
+    keysError.value = err instanceof Error ? err.message : '应用失败';
+    return false;
+  } finally {
+    keysApplying.value = false;
+  }
 }
 
 const audio = new RadioAudio();
@@ -157,42 +307,152 @@ onUnmounted(() => {
       class="gear ui-icon-button"
       :class="{ open: settingsOpen }"
       :aria-expanded="settingsOpen"
-      aria-controls="scheme-settings"
+      aria-controls="settings-dialog"
       aria-label="设置"
-      @click="settingsOpen = !settingsOpen"
+      @click="openSettings"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
         <circle cx="12" cy="12" r="3" />
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
       </svg>
     </button>
-    <Transition name="pop">
-      <fieldset v-if="settingsOpen" id="scheme-settings" class="settings ui-panel">
-        <legend class="settings-title ui-label">氛围配色</legend>
-        <div class="swatches">
-          <label v-for="s in ORB_SCHEMES" :key="s.id" class="ui-swatch">
-            <input
-              class="ui-swatch-input"
-              type="radio"
-              name="scheme"
-              :value="s.id"
-              :checked="scheme.id === s.id"
-              @change="pickScheme(s)"
-            />
-            <span
-              class="ui-swatch-orb"
-              :style="{ '--c1': s.colors[0], '--c2': s.colors[1], '--c3': s.colors[2] }"
-              aria-hidden="true"
-            >
-              <svg class="ui-swatch-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-            </span>
-            <span class="ui-swatch-name">{{ s.name }}</span>
-          </label>
+
+    <!-- PyCharm 式设置弹窗：原生 <dialog>（焦点圈定 / ESC / 遮罩全免费） -->
+    <dialog
+      id="settings-dialog"
+      ref="settingsDialogEl"
+      class="settings-modal ui-panel"
+      aria-labelledby="settings-dialog-title"
+      @close="onSettingsClose"
+      @cancel="onSettingsClose"
+    >
+      <header class="settings-head">
+        <h2 id="settings-dialog-title" class="ui-label settings-title">设置</h2>
+        <button class="ui-icon-button settings-close" aria-label="关闭设置" @click="settingsDialogEl?.close()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </header>
+
+      <div class="settings-body">
+        <nav class="settings-nav" aria-label="设置分类">
+          <button
+            class="settings-nav-item"
+            :class="{ active: activeSection === 'theme' }"
+            :aria-current="activeSection === 'theme' ? 'page' : undefined"
+            @click="activeSection = 'theme'"
+          >
+            主题
+          </button>
+          <button
+            class="settings-nav-item"
+            :class="{ active: activeSection === 'api' }"
+            :aria-current="activeSection === 'api' ? 'page' : undefined"
+            @click="activeSection = 'api'"
+          >
+            API 管理
+          </button>
+        </nav>
+
+        <div class="settings-content">
+          <section v-show="activeSection === 'theme'" class="theme-section" aria-label="氛围配色">
+            <h3 class="ui-label settings-section">氛围配色</h3>
+            <div class="swatches">
+              <label
+                v-for="s in ORB_SCHEMES"
+                :key="s.id"
+                class="ui-theme-card"
+                :style="{ '--c1': s.colors[0], '--c2': s.colors[1], '--c3': s.colors[2] }"
+              >
+                <input
+                  class="ui-swatch-input"
+                  type="radio"
+                  name="scheme"
+                  :value="s.id"
+                  :checked="pendingSchemeId === s.id"
+                  @change="pendingSchemeId = s.id"
+                />
+                <span class="ui-theme-preview" aria-hidden="true">
+                  <span class="ui-theme-orb ui-theme-orb--bl" />
+                  <span class="ui-theme-orb ui-theme-orb--tr" />
+                  <span class="grain" />
+                </span>
+                <span class="ui-theme-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </span>
+                <span class="ui-theme-meta">
+                  <span class="ui-theme-name">{{ s.name }}</span>
+                  <span class="ui-theme-dots" aria-hidden="true">
+                    <i :style="{ background: s.colors[0] }" />
+                    <i :style="{ background: s.colors[1] }" />
+                    <i :style="{ background: s.colors[2] }" />
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section v-show="activeSection === 'api'" aria-label="模型密钥">
+            <h3 class="ui-label settings-section">模型密钥</h3>
+            <p v-if="keysLoading" class="key-note">读取中…</p>
+            <p v-else-if="!keysLoaded" class="key-note">电台服务未连接，无法读取密钥状态</p>
+            <div v-else class="keys-form">
+              <fieldset v-for="g in keyGroups" :key="g.group" class="key-group">
+                <legend class="key-group-title">{{ g.group }}</legend>
+                <div v-for="k in g.keys" :key="k.env" class="key-row">
+                  <label class="key-label" :for="`key-${k.env}`">
+                    <span class="ui-dot" :class="{ configured: k.configured }" aria-hidden="true" />
+                    {{ k.label }}
+                  </label>
+                  <input
+                    :id="`key-${k.env}`"
+                    class="ui-field ui-field--secret"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    type="text"
+                    :readonly="k.configured && !keyEditing[k.env]"
+                    :aria-label="
+                      k.configured ? `${k.label}（已配置，聚焦输入新值覆盖）` : k.label
+                    "
+                    :placeholder="k.configured ? '' : '尚未配置，粘贴 API Key'"
+                    :value="keyDrafts[k.env] ?? k.masked"
+                    @focus="startEditKey(k.env, $event.target)"
+                    @blur="onKeyBlur(k.env)"
+                    @input="onKeyInput(k.env, $event.target)"
+                    @keydown="onKeyKeydown(k.env, $event)"
+                    @copy.prevent
+                    @cut.prevent
+                    @contextmenu.prevent
+                  />
+                </div>
+              </fieldset>
+            </div>
+          </section>
         </div>
-      </fieldset>
-    </Transition>
+      </div>
+
+      <footer class="settings-foot">
+        <p v-if="keysError" class="key-error" role="alert">{{ keysError }}</p>
+        <p v-else-if="keysSaved" class="key-saved" role="status">已写入 .env，即刻生效</p>
+        <div class="settings-buttons">
+          <button class="ui-button ui-button--primary" :disabled="!canApply || keysApplying" @click="applySettings(true)">
+            确定
+          </button>
+          <button class="ui-button" @click="settingsDialogEl?.close()">取消</button>
+          <button
+            class="ui-button"
+            :disabled="!canApply || keysApplying"
+            :aria-busy="keysApplying"
+            @click="applySettings(false)"
+          >
+            {{ keysApplying ? '应用中' : '应用' }}
+          </button>
+        </div>
+      </footer>
+    </dialog>
 
     <section class="hero">
       <p class="on-air" :class="{ active: live, talking: hostTalking }">

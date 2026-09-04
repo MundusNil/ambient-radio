@@ -12,19 +12,25 @@ export interface OrbScheme {
 }
 
 export const ORB_SCHEMES: readonly OrbScheme[] = [
-  { id: 'cyan', name: '晴空', colors: ['#22D3EE', '#06B6D4', '#0284C7'], accent: '#0284C7' },
-  { id: 'indigo', name: '深海', colors: ['#818CF8', '#6366F1', '#4338CA'], accent: '#6366F1' },
-  { id: 'mint', name: '晨雾', colors: ['#6EE7B7', '#34D399', '#0D9488'], accent: '#34D399' },
-  { id: 'amber', name: '午后', colors: ['#FCD34D', '#FBBF24', '#D97706'], accent: '#FBBF24' },
-  { id: 'violet', name: '暮色', colors: ['#C084FC', '#A855F7', '#7C3AED'], accent: '#A855F7' },
-  { id: 'rose', name: '夜樱', colors: ['#FDA4AF', '#FB7185', '#E11D48'], accent: '#FB7185' },
+  // 晴空：Cyan & Sky Blue 极光青蓝
+  { id: 'cyan', name: '晴空', colors: ['#67E8F9', '#22D3EE', '#0EA5E9'], accent: '#38BDF8' },
+  // 深海：Deep Indigo & Royal Purple 沉静靛蓝
+  { id: 'indigo', name: '深海', colors: ['#818CF8', '#5B5BD6', '#3730A3'], accent: '#818CF8' },
+  // 晨雾：Emerald & Mint Teal 雾光薄荷绿
+  { id: 'mint', name: '晨雾', colors: ['#86EFAC', '#34D399', '#0F766E'], accent: '#34D399' },
+  // 午后：Amber & Golden Sunset 暖金落日
+  { id: 'amber', name: '午后', colors: ['#FDE68A', '#F59E0B', '#B45309'], accent: '#FBBF24' },
+  // 暮色：Neon Violet & Magenta 霓虹暮紫
+  { id: 'violet', name: '暮色', colors: ['#C4B5FD', '#A855F7', '#86198F'], accent: '#A855F7' },
+  // 夜樱：Rose Gold & Crimson Bloom 夜樱冷绯
+  { id: 'rose', name: '夜樱', colors: ['#FDCFE8', '#FB7185', '#BE123C'], accent: '#FB7185' },
 ];
 
 export const DEFAULT_SCHEME: OrbScheme = {
   id: 'cyan',
   name: '晴空',
-  colors: ['#22D3EE', '#06B6D4', '#0284C7'],
-  accent: '#0284C7',
+  colors: ['#67E8F9', '#22D3EE', '#0EA5E9'],
+  accent: '#38BDF8',
 };
 
 const STORAGE_KEY = 'mock-radio.scheme';

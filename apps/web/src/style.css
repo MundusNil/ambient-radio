@@ -104,14 +104,19 @@
 
   /* 动效 */
   --ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-card: cubic-bezier(0.4, 0, 0.2, 1);
   --dur-fast: 150ms;
   --dur: 250ms;
   --dur-slow: 600ms;
   --dur-ambient: 2s;
+  --dur-card: 300ms;
 
   /* 背景模糊 */
   --blur-ui: 6px;
   --blur-pop: 10px;
+
+  /* 主按钮固定蓝：不随主题 accent 变化 */
+  --btn-primary: #2563eb;
 
   /* 页面专用：底部控制区预留高度 */
   --dock-reserve: 228px;
@@ -209,6 +214,11 @@ body {
 
 .ui-button:disabled {
   opacity: 0.5;
+  cursor: default;
+}
+
+/* 真正在忙（调频中/应用中）才给等待光标；单纯禁用不装忙 */
+.ui-button:disabled[aria-busy="true"] {
   cursor: wait;
 }
 
@@ -216,6 +226,17 @@ body {
 .ui-button.is-on {
   border-color: var(--accent-line);
   background: var(--accent-soft);
+}
+
+/* 主按钮：固定蓝实底（设置弹窗「确定」），与主题色无关 */
+.ui-button--primary {
+  color: var(--paper-0);
+  background: var(--btn-primary);
+  border-color: var(--btn-primary);
+}
+
+.ui-button--primary:hover:not(:disabled) {
+  filter: brightness(1.12);
 }
 
 /* 幽灵按钮：无框无底，仅文字（发送） */
@@ -272,6 +293,7 @@ body {
 
 .ui-button:focus-visible,
 .ui-icon-button:focus-visible,
+.ui-field:focus-visible,
 .ui-slider:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -361,13 +383,24 @@ body {
   backdrop-filter: blur(var(--blur-pop));
 }
 
-/* 弥散渐变色卡（主题选择器） */
-.ui-swatch {
+.ui-theme-card {
+  --card-ac: var(--c2);
   position: relative;
   display: flex;
+  /* stretch + 固定预览比例：6 张卡永远等高，不随内容塌陷 */
   flex-direction: column;
-  gap: 5px;
+  align-self: stretch;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
   cursor: pointer;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: var(--radius-xl);
+  transition:
+    transform var(--dur-card) var(--ease-card),
+    border-color var(--dur-card) var(--ease-card),
+    background var(--dur-card) var(--ease-card),
+    box-shadow var(--dur-card) var(--ease-card);
 }
 
 .ui-swatch-input {
@@ -382,96 +415,138 @@ body {
   border: 0;
 }
 
-.ui-swatch-orb {
+/* 微缩光场视窗：还原主页「全黑底 + 左下/右上双弥散光球」，无任何线框 */
+.ui-theme-preview {
   position: relative;
-  display: grid;
-  place-items: center;
   width: 100%;
-  min-height: var(--tap);
-  aspect-ratio: 3 / 2;
-  border-radius: var(--radius-md);
+  aspect-ratio: 16 / 9;
   overflow: hidden;
-  background:
-    radial-gradient(90% 90% at 12% 88%, var(--c3) 0%, transparent 55%),
-    radial-gradient(110% 100% at 88% 10%, var(--c1) 0%, transparent 58%),
-    radial-gradient(120% 130% at 55% 55%, var(--c2) 0%, var(--c3) 78%);
-  background-color: var(--c3);
-  box-shadow: inset 0 0 0 1px var(--line);
-  transition: box-shadow var(--dur-fast) var(--ease);
+  border-radius: var(--radius-lg);
+  background: var(--ink-900);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
 }
 
-/* 颗粒层：细密渐变近似胶片噪声（data-URI SVG 会让 Vite dev 编译空 CSS，勿用） */
-.ui-swatch-orb::before {
-  content: "";
+.ui-theme-orb {
+  position: absolute;
+  width: 82%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(12px);
+  opacity: 0.65;
+  transition:
+    opacity var(--dur-card) var(--ease-card),
+    transform var(--dur-card) var(--ease-card);
+}
+
+/* 左下：主题主色（亮）；右上：主题辅色（深）——与 .gradient 的 orb-1/orb-3 同位 */
+.ui-theme-orb--bl {
+  bottom: -20%;
+  left: -20%;
+  background: radial-gradient(circle at 50% 50%, var(--c1) 0%, transparent 60%);
+}
+
+.ui-theme-orb--tr {
+  top: -20%;
+  right: -20%;
+  background: radial-gradient(circle at 50% 50%, var(--c3) 0%, transparent 60%);
+}
+
+/* 胶片颗粒：与全站氛围层同一质感 */
+.ui-theme-preview .grain {
   position: absolute;
   inset: 0;
+  z-index: 1;
   background-image:
-    repeating-conic-gradient(rgb(255 255 255 / 7%) 0% 25%, transparent 0% 50%),
+    repeating-conic-gradient(rgb(255 255 255 / 6%) 0% 25%, transparent 0% 50%),
     repeating-linear-gradient(45deg, rgb(0 0 0 / 8%) 0 1px, transparent 1px 3px);
   background-size: 2px 2px;
-  opacity: 0.55;
+  opacity: 0.5;
   mix-blend-mode: overlay;
 }
 
-/* 暗角：边缘沉进黑里 */
-.ui-swatch-orb::after {
-  content: "";
+/* 选中对勾：整卡右上角小徽标 */
+.ui-theme-badge {
   position: absolute;
-  inset: 0;
-  background: radial-gradient(120% 120% at 50% 45%, transparent 52%, rgb(0 0 0 / 38%) 100%);
-}
-
-/* 勾选：选中不只靠颜色传达 */
-.ui-swatch-check {
-  position: relative;
-  z-index: 1;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
   width: 18px;
   height: 18px;
-  color: var(--paper-0);
+  color: var(--ink-900);
+  background: var(--card-ac);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
   opacity: 0;
   transform: scale(0.6);
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 60%));
   transition:
-    opacity 180ms var(--ease),
-    transform 180ms var(--ease);
+    opacity 180ms var(--ease-card),
+    transform 180ms var(--ease-card);
 }
 
-.ui-swatch-name {
-  font-size: var(--text-micro);
+.ui-theme-badge svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* 信息区：名称加粗提亮 + 三个代表色点（不写介绍文字） */
+.ui-theme-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 0 2px;
+}
+
+.ui-theme-name {
+  font-size: var(--text-md);
+  font-weight: 600;
   letter-spacing: var(--track-name);
-  color: var(--fg-faint);
-  transition: color var(--dur-fast) var(--ease);
+  color: rgb(255 255 255 / 90%);
 }
 
-.ui-swatch:hover .ui-swatch-name {
-  color: var(--fg-dim);
+.ui-theme-dots {
+  display: flex;
+  gap: 3px;
 }
 
-.ui-swatch:hover .ui-swatch-orb {
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 16%),
-    0 0 0 1px rgb(255 255 255 / 10%);
+.ui-theme-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%);
 }
 
-.ui-swatch-input:checked ~ .ui-swatch-orb {
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 14%),
-    0 0 0 2px var(--surface),
-    0 0 0 3px var(--accent-line);
+/* hover：卡片上浮 + 光球放大提亮 */
+.ui-theme-card:hover {
+  background: rgb(255 255 255 / 5%);
+  border-color: rgb(255 255 255 / 16%);
+  transform: translateY(-2px);
 }
 
-.ui-swatch-input:checked ~ .ui-swatch-orb .ui-swatch-check {
+.ui-theme-card:hover .ui-theme-orb {
+  opacity: 0.75;
+  transform: scale(1.05);
+}
+
+/* 选中：主题色发光 + 内描边 + 对勾落位 */
+.ui-swatch-input:checked ~ .ui-theme-badge {
   opacity: 1;
   transform: scale(1);
 }
 
-.ui-swatch-input:focus-visible ~ .ui-swatch-orb {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+.ui-theme-card:has(.ui-swatch-input:checked) {
+  background: color-mix(in oklab, var(--card-ac) 8%, transparent);
+  border-color: color-mix(in oklab, var(--card-ac) 55%, transparent);
+  box-shadow:
+    inset 0 0 0 1px var(--card-ac),
+    0 0 16px color-mix(in oklab, var(--card-ac) 25%, transparent);
 }
 
-.ui-swatch-input:checked ~ .ui-swatch-name {
-  color: var(--fg);
+.ui-swatch-input:focus-visible ~ .ui-theme-preview {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* ---- 3. 页面层 ---------------------------------------------------------- */
@@ -665,12 +740,220 @@ body {
   transform: rotate(90deg);
 }
 
-.settings {
-  position: fixed;
-  top: 64px;
-  right: var(--space-lg);
-  z-index: 30;
-  min-width: 168px;
+/* PyCharm 式设置弹窗：居中模态 + 左侧导航 + 底部按钮（原生 <dialog>） */
+.settings-modal {
+  /* ui-panel 的 margin:0 会破坏 dialog 默认 margin:auto 居中，这里显式恢复 */
+  margin: auto;
+  width: min(680px, calc(100vw - 2 * var(--space-xl)));
+  /* 固定高度：切换导航不缩放外框（PyCharm 行为） */
+  height: min(560px, calc(100dvh - 2 * var(--space-xl)));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  color: var(--fg);
+  background: rgb(25 33 52 / 96%);
+  border: 0;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elev-pop);
+  backdrop-filter: blur(var(--blur-pop));
+}
+
+.settings-modal:not([open]) {
+  /* display:flex 覆盖了 UA 的 dialog:not([open]) 隐藏规则，必须显式补回 */
+  display: none;
+}
+
+.settings-modal::backdrop {
+  background: var(--scrim);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+}
+
+.settings-close {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+}
+
+.settings-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-xs);
+  width: 152px;
+  padding: var(--space-sm) var(--space-md) var(--space-lg) var(--space-lg);
+}
+
+.settings-nav-item {
+  padding: 10px var(--space-md);
+  font-family: inherit;
+  font-size: var(--text-md);
+  letter-spacing: var(--track-tight);
+  text-align: left;
+  color: var(--fg-dim);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.settings-nav-item:hover {
+  color: var(--fg);
+  background: var(--surface);
+}
+
+.settings-nav-item.active {
+  color: var(--fg);
+  background: var(--accent-soft);
+}
+
+.settings-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-sm) var(--space-xl) var(--space-xl) var(--space-lg);
+}
+
+.settings-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-md) var(--space-lg);
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+}
+
+.settings-buttons {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.settings-buttons .ui-button {
+  padding: 10px var(--space-xl);
+  letter-spacing: var(--track-sm);
+  text-indent: var(--track-sm);
+}
+
+.settings-section:first-of-type {
+  margin-top: 0;
+}
+
+/* 密钥区 */
+.key-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+
+.keys-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* 厂商分组：虚线框圈起，legend 骑在框线上 */
+.key-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: 0;
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+}
+
+.key-group-title {
+  /* 组标题压过字段标签：字号更大、颜色更亮 */
+  padding: 0 var(--space-sm);
+  font-size: var(--text-lg);
+  letter-spacing: var(--track-tight);
+  color: var(--fg);
+}
+
+.key-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.key-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  letter-spacing: var(--track-tight);
+}
+
+/* 已配置 = 强调色灯珠（不只靠颜色：输入框同时显示掩码/未配置占位） */
+.ui-dot.configured {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+/* 密钥输入框：已配置时只读显示掩码，禁复制/选择；聚焦后正常输入 */
+.ui-field--secret {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: var(--text-sm);
+  letter-spacing: 0.12em;
+  /* 用 CSS 掩码代替 type=password：Chrome 不再识别为密码框、不弹「保存密码」 */
+  -webkit-text-security: disc;
+}
+
+/* 聚焦只留文本光标，不画强调色描边（用户指定） */
+.ui-field--secret:focus-visible {
+  outline: none;
+}
+
+.ui-field--secret[readonly] {
+  cursor: text;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--fg-faint);
+  border-bottom-style: dashed;
+}
+
+.key-help {
+  margin: 0;
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
+.key-error {
+  margin: 0;
+  font-size: var(--text-micro);
+  color: #fca5a5;
+}
+
+.key-saved {
+  margin: 0;
+  font-size: var(--text-micro);
+  color: var(--accent);
 }
 
 .settings-title {
@@ -681,24 +964,32 @@ body {
 }
 
 .swatches {
+  /* 主题卡片网格：3 列 × 2 行 */
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-sm);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
 }
 
-/* 浮层进出场 */
-
-.pop-enter-active,
-.pop-leave-active {
-  transition:
-    opacity 180ms var(--ease),
-    transform 180ms var(--ease);
+.theme-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 
-.pop-enter-from,
-.pop-leave-to {
-  opacity: 0;
-  transform: translateY(-6px) scale(0.97);
+.theme-section .swatches {
+  flex: 1;
+  align-content: center;
+}
+/* 弹窗进出场（原生 dialog：open 动画） */
+.settings-modal[open] {
+  animation: settings-pop 180ms var(--ease);
+}
+
+@keyframes settings-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
 }
 
 /* 音量 */
@@ -715,9 +1006,7 @@ body {
   color: var(--fg-dim);
   flex-shrink: 0;
 }
-
 /* 留言（FR-050 / FR-052 / FR-053） */
-
 .chat {
   display: flex;
   flex-direction: column;
@@ -785,15 +1074,21 @@ body {
     transform: none;
   }
 
-  .pop-enter-active,
-  .pop-leave-active {
-    transition: none;
+  .settings-modal[open] {
+    animation: none;
+  }
+
+  .ui-theme-card:hover {
+    transform: none;
   }
 
   .veil,
   .on-air,
   .now-playing,
   .ui-button,
+  .ui-theme-card,
+  .ui-theme-badge,
+  .ui-theme-orb,
   .ui-button--ghost,
   .np-fade-enter-active,
   .np-fade-leave-active {

@@ -79,3 +79,35 @@ export function connectWs(onEvent: (event: ServerEvent) => void, onOpen?: () => 
     },
   };
 }
+
+// ---- 设置面板：密钥配置（GET 只回「是否已配置」；POST 写入 .env 并热生效） ----
+
+export interface KeyStatus {
+  env: string;
+  label: string;
+  /** 面板分组（同厂商放一组） */
+  group: string;
+  configured: boolean;
+  /** 按真实值长度生成的掩码（点数=长度，改完一眼可见） */
+  masked: string;
+}
+
+export async function fetchKeyStatus(): Promise<KeyStatus[]> {
+  const res = await fetch('/api/admin/keys');
+  if (!res.ok) throw new Error(`/api/admin/keys ${res.status}`);
+  const data = (await res.json()) as { keys: KeyStatus[] };
+  return data.keys;
+}
+
+export async function applyKeys(
+  updates: Record<string, string>,
+): Promise<{ ok: true; status: KeyStatus[] }> {
+  const res = await fetch('/api/admin/keys', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates }),
+  });
+  const data = (await res.json()) as { ok?: true; status?: KeyStatus[]; error?: string };
+  if (!res.ok || !data.ok) throw new Error(data.error ?? `POST /api/admin/keys ${res.status}`);
+  return { ok: true, status: data.status ?? [] };
+}

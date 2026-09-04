@@ -39,6 +39,7 @@ const draft = ref('');
           <button class="ui-button" disabled>调频中</button>
         </div>
         <div class="gallery-row">
+          <button class="ui-button ui-button--primary">确定</button>
           <button class="ui-button ui-button--ghost">发送</button>
           <button class="ui-button ui-button--ghost" disabled>发送</button>
         </div>
@@ -62,6 +63,19 @@ const draft = ref('');
           <input v-model="draft" class="ui-field" type="text" placeholder="说点什么" />
           <button class="ui-button ui-button--ghost" type="submit">发送</button>
         </form>
+        <div class="key-row">
+          <label class="key-label" for="g-key">
+            <span class="ui-dot configured" />豆包（方舟）API Key
+          </label>
+          <input
+            id="g-key"
+            class="ui-field ui-field--secret"
+            type="text"
+            readonly
+            value="••••••••••••••••"
+          />
+          <p class="key-help">只读掩码、禁复制；聚焦全选后直接输入新值覆盖</p>
+        </div>
       </div>
 
       <div class="gallery-cell">
@@ -73,16 +87,33 @@ const draft = ref('');
       </div>
 
       <div class="gallery-cell gallery-cell--wide">
-        <p class="ui-label">色卡 Swatch</p>
+        <p class="ui-label">主题卡片 Theme card</p>
         <div class="swatches">
-          <label v-for="s in ORB_SCHEMES" :key="s.id" class="ui-swatch">
+          <label
+            v-for="s in ORB_SCHEMES"
+            :key="s.id"
+            class="ui-theme-card"
+            :style="{ '--c1': s.colors[0], '--c2': s.colors[1], '--c3': s.colors[2] }"
+          >
             <input v-model="checked" class="ui-swatch-input" type="radio" name="gallery-scheme" :value="s.id" />
-            <span class="ui-swatch-orb" :style="{ '--c1': s.colors[0], '--c2': s.colors[1], '--c3': s.colors[2] }" aria-hidden="true">
-              <svg class="ui-swatch-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <span class="ui-theme-preview" aria-hidden="true">
+              <span class="ui-theme-orb ui-theme-orb--bl" />
+              <span class="ui-theme-orb ui-theme-orb--tr" />
+              <span class="grain" />
+            </span>
+            <span class="ui-theme-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 6 9 17l-5-5" />
               </svg>
             </span>
-            <span class="ui-swatch-name">{{ s.name }}</span>
+            <span class="ui-theme-meta">
+              <span class="ui-theme-name">{{ s.name }}</span>
+              <span class="ui-theme-dots" aria-hidden="true">
+                <i :style="{ background: s.colors[0] }" />
+                <i :style="{ background: s.colors[1] }" />
+                <i :style="{ background: s.colors[2] }" />
+              </span>
+            </span>
           </label>
         </div>
       </div>

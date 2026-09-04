@@ -363,6 +363,12 @@ export function createMiniMaxTts(options: MiniMaxTtsOptions): TtsClient {
 // 工厂：按 provider 选择实现（组装层接线用）
 // ---------------------------------------------------------------------------
 
+/** 语速基准（0.5~1.5）→ edge-tts rate 字符串（0.9 → "-10%"，1.15 → "+15%"） */
+export function edgeRateFromSpeechRate(rate: number): string {
+  const pct = Math.round((rate - 1) * 100);
+  return pct === 0 ? '+0%' : pct > 0 ? `+${pct}%` : `${pct}%`;
+}
+
 export type TtsProviderName = 'edge-tts' | 'minimax';
 
 export interface CreateTtsParams {
@@ -370,13 +376,14 @@ export interface CreateTtsParams {
   postProcess: string;
   /** 已解析为绝对路径的缓存目录 */
   cacheDir: string;
-  edge: { voice: string; rate: string };
+  /** 语速基准（provider 中立；设置面板「语速」即此项） */
+  speechRate: number;
+  edge: { voice: string };
   minimax: {
     voice: string;
     apiKeyEnv: string;
     groupIdEnv: string;
     model: string;
-    speed: number;
   };
   /** 从环境变量取值（注入以便测试；运行时传 process.env 的取值函数） */
   resolveEnv: (name: string) => string | undefined;
@@ -388,7 +395,7 @@ export function createTts(params: CreateTtsParams): TtsClient {
   const loudnorm = params.postProcess === 'loudnorm';
 
   if (params.provider === 'minimax') {
-    const { voice, apiKeyEnv, groupIdEnv, model, speed } = params.minimax;
+    const { voice, apiKeyEnv, groupIdEnv, model } = params.minimax;
     const apiKey = params.resolveEnv(apiKeyEnv) ?? '';
     const groupId = params.resolveEnv(groupIdEnv) ?? '';
     if (!apiKey || !groupId) {
@@ -401,7 +408,7 @@ export function createTts(params: CreateTtsParams): TtsClient {
       groupId,
       voice,
       model,
-      speed,
+      speed: params.speechRate,
       cacheDir: params.cacheDir,
       loudnorm,
       fetchImpl: params.fetchImpl,
@@ -410,7 +417,7 @@ export function createTts(params: CreateTtsParams): TtsClient {
 
   return createEdgeTts({
     voice: params.edge.voice,
-    rate: params.edge.rate,
+    rate: edgeRateFromSpeechRate(params.speechRate),
     cacheDir: params.cacheDir,
     loudnorm,
   });

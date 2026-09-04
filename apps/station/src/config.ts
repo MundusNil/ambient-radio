@@ -14,12 +14,13 @@ interface RawJson {
   engine?: Partial<EngineConfig> & { nodeWindow?: Partial<EngineConfig['nodeWindow']> };
   scheduler?: Partial<SchedulerConfig>;
   memory?: Partial<MemoryConfig>;
-  audio?: { ducking?: Partial<DuckingConfig>; crossfadeMs?: number };
+  audio?: { ducking?: Partial<DuckingConfig>; crossfadeMs?: number; speechVolume?: number };
   llm?: Partial<LlmConfig>;
   tts?: {
     provider?: 'edge-tts' | 'minimax';
     postProcess?: string;
     cacheDir?: string;
+    speechRate?: number;
     edge?: Partial<EdgeTtsProviderConfig>;
     minimax?: Partial<MiniMaxTtsProviderConfig>;
   };
@@ -52,21 +53,17 @@ export interface LlmConfig {
   maxSegmentCharsByKind?: Partial<Record<SegmentKind, number>>;
 }
 
-/** edge-tts 子配置（免费，D8 默认） */
+/** edge-tts 子配置（免费，D8 默认）；语速走 tts.speechRate 统一基准 */
 export interface EdgeTtsProviderConfig {
   voice: string;
-  /** edge-tts rate，如 "-10%" */
-  rate: string;
 }
 
-/** minimax 子配置（付费可选，音质更可控） */
+/** minimax 子配置（付费可选，音质更可控）；语速走 tts.speechRate 统一基准 */
 export interface MiniMaxTtsProviderConfig {
   /** 系统音色 ID，如 Chinese_wenrounvxing（温柔女性） */
   voice: string;
   /** 模型，默认 speech-02-hd */
   model: string;
-  /** 语速 0.5~2.0 */
-  speed: number;
   /** 存放 API key 的环境变量名 */
   apiKeyEnv: string;
   /** 存放 GroupId 的环境变量名 */
@@ -78,6 +75,8 @@ export interface TtsConfig {
   /** 'loudnorm' 或 'none' */
   postProcess: string;
   cacheDir: string;
+  /** 语速基准 0.5~1.5（1 = 原速）；edge 换算成 ±%，minimax 直接作 speed */
+  speechRate: number;
   edge: EdgeTtsProviderConfig;
   minimax: MiniMaxTtsProviderConfig;
 }
@@ -86,7 +85,7 @@ export interface StationRuntimeConfig {
   station: { name: string; host: string; port: number };
   engine: EngineConfig;
   scheduler: SchedulerConfig;
-  audio: { ducking: DuckingConfig; crossfadeMs: number };
+  audio: { ducking: DuckingConfig; crossfadeMs: number; speechVolume: number };
   llm: LlmConfig;
   tts: TtsConfig;
   messages: { retentionDays: number };
@@ -100,6 +99,20 @@ const DEFAULT_DUCKING: DuckingConfig = {
   releaseDelayMs: 1200,
   releaseTauMs: 600,
 };
+
+/** 语速基准默认值（0.9 ≈ 舒缓；FR-045「语速舒缓」） */
+const DEFAULT_SPEECH_RATE = 0.9;
+
+/** 主播音量默认值（1 = 不额外衰减；前端语音轨增益的乘数） */
+const DEFAULT_SPEECH_VOLUME = 1;
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v));
+}
+
+function clampRate(v: number): number {
+  return Math.min(1.5, Math.max(0.5, v));
+}
 
 /** 切歌交叠淡变时长（ms）；0 = 硬切。听感顺滑区间约 150~400 */
 const DEFAULT_CROSSFADE_MS = 250;
@@ -136,6 +149,7 @@ export function loadStationConfig(
     audio: {
       ducking: { ...DEFAULT_DUCKING, ...raw.audio?.ducking },
       crossfadeMs: raw.audio?.crossfadeMs ?? DEFAULT_CROSSFADE_MS,
+      speechVolume: clamp01(raw.audio?.speechVolume ?? DEFAULT_SPEECH_VOLUME),
     },
     llm: {
       provider: 'ark',
@@ -157,19 +171,18 @@ export function loadStationConfig(
       ...raw.llm,
     },
     tts: {
-      provider: 'edge-tts',
-      postProcess: 'loudnorm',
-      cacheDir: '.cache/tts',
       ...raw.tts,
+      provider: raw.tts?.provider ?? 'edge-tts',
+      postProcess: raw.tts?.postProcess ?? 'loudnorm',
+      cacheDir: raw.tts?.cacheDir ?? '.cache/tts',
+      speechRate: clampRate(raw.tts?.speechRate ?? DEFAULT_SPEECH_RATE),
       edge: {
         voice: 'zh-CN-XiaoxuanNeural',
-        rate: '-10%',
         ...raw.tts?.edge,
       },
       minimax: {
         voice: 'Chinese_wenrounvxing',
         model: 'speech-02-hd',
-        speed: 1,
         apiKeyEnv: 'MINIMAX_API_KEY',
         groupIdEnv: 'MINIMAX_GROUP_ID',
         ...raw.tts?.minimax,

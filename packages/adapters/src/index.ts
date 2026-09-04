@@ -6,4 +6,4 @@ export { createOpenAiCompatibleLlm } from './llm';
 export type { RecentPlay, Store } from './store';
 export { createStore } from './store';
 export type { CreateTtsParams, EdgeTtsOptions, MiniMaxTtsOptions, TtsProviderName } from './tts';
-export { createEdgeTts, createMiniMaxTts, createTts } from './tts';
+export { createEdgeTts, createMiniMaxTts, createTts, edgeRateFromSpeechRate } from './tts';

@@ -63,6 +63,8 @@ export interface Engine {
   onMessage(message: ListenerMessageIn): void;
   /** 受理了点歌：安排一次 request_ack 预告（P2） */
   onRequestAck(title: string): void;
+  /** 热切换语音功能开关：关闭时丢弃在途段落，立即静默（设置面板用） */
+  setVoiceEnabled(on: boolean): void;
   /** /api/state 与上下文构建共用的时间线快照 */
   getSnapshot(now: number): EngineSnapshot;
 }
@@ -98,6 +100,8 @@ export function createEngine(options: EngineOptions): Engine {
   let lastTopicAt = Number.NEGATIVE_INFINITY;
   let listeners = 0;
   let stationIdDue = false;
+  /** 语音开关的运行时副本：setVoiceEnabled 热切换，不回写调用方 config */
+  let voiceEnabled = config.voiceEnabled;
   let seq = 0;
   const recentTracks: Track[] = [];
   /** P2：待回应留言（按到达顺序；prefer 下一个自然节点 / force 到期放宽尾奏） */
@@ -121,6 +125,8 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function shouldSpeak(): boolean {
+    // 语音功能关闭：不规划任何段落（LLM/TTS 均不触发，零费用，只放音乐）
+    if (!voiceEnabled) return false;
     return listeners > 0 || config.speakWhenAlone;
   }
 
@@ -309,6 +315,8 @@ export function createEngine(options: EngineOptions): Engine {
   }
 
   function onMessage(message: ListenerMessageIn): void {
+    // 语音功能关闭：留言不进入回应队列（库里照常保留，维护者可查）
+    if (!voiceEnabled) return;
     replyQueue.push(message);
   }
 
@@ -322,6 +330,17 @@ export function createEngine(options: EngineOptions): Engine {
     // 0 → n：新会话开始，安排一次台呼（FR-004/005）
     if (wasEmpty && listeners > 0) {
       stationIdDue = true;
+    }
+  }
+
+  function setVoiceEnabled(on: boolean): void {
+    if (voiceEnabled === on) return;
+    voiceEnabled = on;
+    if (!on) {
+      // 关闭：丢弃在途/已就绪未播的段落，立即静默（留言留在队列，重新开启后按 SLA 重试）
+      pending = null;
+      stationIdDue = false;
+      ackTitle = null;
     }
   }
 
@@ -349,6 +368,7 @@ export function createEngine(options: EngineOptions): Engine {
     onTrackStarted,
     onSegmentReady,
     onSegmentFailed,
+    setVoiceEnabled,
     onListenersChanged,
     onMessage,
     onRequestAck,

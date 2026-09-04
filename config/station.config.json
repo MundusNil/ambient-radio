@@ -5,6 +5,7 @@
     "port": 9730
   },
   "engine": {
+    "voiceEnabled": true,
     "talkIntervalMs": [300000, 480000],
     "minTalkGapMs": 90000,
     "preferReplyMs": 0,
@@ -31,7 +32,8 @@
       "releaseDelayMs": 1200,
       "releaseTauMs": 600
     },
-    "crossfadeMs": 250
+    "crossfadeMs": 250,
+    "speechVolume": 1
   },
   "llm": {
     "provider": "ark",
@@ -55,14 +57,13 @@
     "provider": "minimax",
     "postProcess": "loudnorm",
     "cacheDir": ".cache/tts",
+    "speechRate": 0.9,
     "edge": {
-      "voice": "zh-CN-XiaoxuanNeural",
-      "rate": "-10%"
+      "voice": "zh-CN-XiaoxuanNeural"
     },
     "minimax": {
       "voice": "Chinese_wenrounvxing",
       "model": "speech-02-hd",
-      "speed": 0.9,
       "apiKeyEnv": "MINIMAX_API_KEY",
       "groupIdEnv": "MINIMAX_GROUP_ID"
     }

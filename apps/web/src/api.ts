@@ -13,6 +13,8 @@ export interface StationInfo {
     /** 切歌交叠淡变时长（ms）；0 = 硬切 */
     crossfadeMs: number;
   };
+  /** 语音设置（开台时读取：总开关 + 主播音量） */
+  voice?: { enabled: boolean; speechVolume: number };
 }
 
 export async function fetchConfig(): Promise<StationInfo> {
@@ -110,4 +112,43 @@ export async function applyKeys(
   const data = (await res.json()) as { ok?: true; status?: KeyStatus[]; error?: string };
   if (!res.ok || !data.ok) throw new Error(data.error ?? `POST /api/admin/keys ${res.status}`);
   return { ok: true, status: data.status ?? [] };
+}
+
+// ---- 设置面板：语音设置（GET 回当前值 + 频率档位；POST 写 station.config.json 并热生效） ----
+
+export interface VoiceSettings {
+  enabled: boolean;
+  /** 语速基准 0.5~1.5 */
+  speechRate: number;
+  /** 主播音量 0~1 */
+  speechVolume: number;
+  /** 发言频率档位 id */
+  cadence: string;
+}
+
+export interface CadencePreset {
+  id: string;
+  label: string;
+  hint: string;
+  perHour: string;
+}
+
+export async function fetchVoiceSettings(): Promise<{
+  settings: VoiceSettings;
+  cadences: CadencePreset[];
+}> {
+  const res = await fetch('/api/admin/voice');
+  if (!res.ok) throw new Error(`/api/admin/voice ${res.status}`);
+  return (await res.json()) as { settings: VoiceSettings; cadences: CadencePreset[] };
+}
+
+export async function applyVoiceSettings(patch: Partial<VoiceSettings>): Promise<VoiceSettings> {
+  const res = await fetch('/api/admin/voice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings: patch }),
+  });
+  const data = (await res.json()) as { ok?: true; settings?: VoiceSettings; error?: string };
+  if (!res.ok || !data.ok) throw new Error(data.error ?? `POST /api/admin/voice ${res.status}`);
+  return data.settings as VoiceSettings;
 }

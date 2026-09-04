@@ -17,6 +17,9 @@ export class RadioAudio {
   private sourceGain: GainNode | null = null;
   /** 语音轨 source（独立于音乐轨；播完自动 unduck，FR-044） */
   private speechSource: AudioBufferSourceNode | null = null;
+  /** 主播音量（设置面板「语音」页；语音轨独立增益，不影响音乐总音量） */
+  private speechGainNode: GainNode | null = null;
+  private speechVolume = 1;
   private currentKey = '';
   private volume = 0.8;
   /** 换曲竞态防护：只有最新一次 play 调用能真正播出（防止并发解码交错） */
@@ -45,7 +48,10 @@ export class RadioAudio {
       this.ctx = new AudioContext();
       this.duckGain = this.ctx.createGain();
       this.volumeGain = this.ctx.createGain();
+      this.speechGainNode = this.ctx.createGain();
+      this.speechGainNode.gain.value = this.speechVolume;
       this.duckGain.connect(this.volumeGain);
+      this.speechGainNode.connect(this.volumeGain);
       this.volumeGain.connect(this.ctx.destination);
       this.volumeGain.gain.value = this.volume;
     }
@@ -157,8 +163,8 @@ export class RadioAudio {
       this.stopSpeech();
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
-      // 语音直连总音量（不经过 duckGain——它自己是压低音乐的那一方）
-      src.connect(this.volumeGain);
+      // 语音走独立增益（设置面板「主播音量」），再进总音量（不经过 duckGain——它自己是压低音乐的那一方）
+      src.connect(this.speechGainNode ?? this.volumeGain);
       src.onended = () => {
         this.speechSource = null;
         this.unduck();
@@ -213,6 +219,15 @@ export class RadioAudio {
     if (this.ctx && this.volumeGain) {
       this.volumeGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
     }
+  }
+
+  /** 设置主播音量（0~1）：语音轨增益即时生效；0 时掐掉在播语音 */
+  setSpeechVolume(v: number): void {
+    this.speechVolume = Math.min(1, Math.max(0, v));
+    if (this.ctx && this.speechGainNode) {
+      this.speechGainNode.gain.setTargetAtTime(this.speechVolume, this.ctx.currentTime, 0.05);
+    }
+    if (this.speechVolume === 0) this.stopSpeech();
   }
 
   suspend(): void {

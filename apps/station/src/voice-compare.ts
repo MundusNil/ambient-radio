@@ -6,7 +6,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createEdgeTts } from '@mock-radio/adapters';
+import { createEdgeTts, edgeRateFromSpeechRate } from '@mock-radio/adapters';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
 import { findRepoRoot } from './paths';
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   for (const candidate of CANDIDATES) {
     const tts = createEdgeTts({
       voice: candidate.voice,
-      rate: config.tts.edge.rate,
+      rate: edgeRateFromSpeechRate(config.tts.speechRate),
       cacheDir: outDir,
       loudnorm: config.tts.postProcess === 'loudnorm',
     });

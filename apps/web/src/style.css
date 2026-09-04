@@ -980,6 +980,159 @@ body {
   flex: 1;
   align-content: center;
 }
+
+/* 语音设置页 */
+.voice-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* 总开关：胶囊 switch（隐藏原生 checkbox，轨道 + 滑块全自绘） */
+.voice-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  cursor: pointer;
+}
+
+.voice-switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  margin-top: 2px;
+  background: var(--line-strong);
+  border-radius: 999px;
+  transition: background 200ms var(--ease);
+}
+
+.voice-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: var(--paper-0);
+  border-radius: 50%;
+  transition: transform 200ms var(--ease);
+}
+
+.voice-switch .ui-swatch-input:checked ~ .voice-switch-track {
+  background: var(--accent);
+}
+
+.voice-switch .ui-swatch-input:checked ~ .voice-switch-track .voice-switch-thumb {
+  transform: translateX(20px);
+}
+
+.voice-switch .ui-swatch-input:focus-visible ~ .voice-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.voice-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.voice-switch-title {
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+.voice-value {
+  margin-left: auto;
+  font-family: var(--font-latin);
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-slider {
+  width: 100%;
+}
+
+/* 发言频率：三档卡片单选（3~5 个选项用 radio，全部可见一次点中；原生 select 弹层无法主题化） */
+.voice-cadence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: 0;
+  border: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.voice-cadence-title {
+  padding: 0;
+  font-size: var(--text-md);
+  color: var(--fg-dim);
+}
+
+.cadence-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-sm);
+}
+
+.cadence-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  cursor: pointer;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color var(--dur-card) var(--ease-card),
+    background var(--dur-card) var(--ease-card),
+    box-shadow var(--dur-card) var(--ease-card);
+}
+
+.cadence-card:hover {
+  border-color: var(--accent-line);
+}
+
+.cadence-card:has(.ui-swatch-input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.cadence-card:has(.ui-swatch-input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.cadence-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.cadence-name {
+  font-size: var(--text-lg);
+  color: var(--fg);
+}
+
+.cadence-rate {
+  font-size: var(--text-nano);
+  color: var(--fg-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cadence-hint {
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
 /* 弹窗进出场（原生 dialog：open 动画） */
 .settings-modal[open] {
   animation: settings-pop 180ms var(--ease);

@@ -55,6 +55,7 @@ async function main(): Promise<void> {
       provider: config.tts.provider,
       postProcess: config.tts.postProcess,
       cacheDir: resolve(repoRoot, config.tts.cacheDir),
+      speechRate: config.tts.speechRate,
       edge: config.tts.edge,
       minimax: config.tts.minimax,
       resolveEnv: (name) => process.env[name],
@@ -86,6 +87,8 @@ async function main(): Promise<void> {
     maxSegmentCharsByKind: config.llm.maxSegmentCharsByKind,
     envPath: resolve(repoRoot, '.env'),
     keyDefs: keyDefsFor(config),
+    configPath: resolve(repoRoot, 'config', 'station.config.json'),
+    runtimeConfig: config,
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

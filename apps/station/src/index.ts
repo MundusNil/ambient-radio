@@ -10,6 +10,7 @@ import { getDayPartContext } from '@ambient-radio/core';
 import { serve } from '@hono/node-server';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
+import { keyDefsFor } from './keys';
 import { scanLibrary } from './library';
 import { findRepoRoot } from './paths';
 import { createRadio } from './radio';
@@ -38,10 +39,29 @@ async function main(): Promise<void> {
     .map((s) => `${s}(${tracks.filter((t) => t.styles.includes(s)).length})`)
     .join(' ');
 
-  const apiKey = process.env[config.llm.apiKeyEnv] ?? '';
-  if (!apiKey) {
+  // 密钥工厂：每次调用都从 process.env 现取——设置面板写入 .env 后重建即生效
+  const llmFactory = () =>
+    createOpenAiCompatibleLlm({
+      baseUrl: config.llm.baseUrl,
+      apiKey: process.env[config.llm.apiKeyEnv] ?? '',
+      model: config.llm.model,
+      temperature: config.llm.temperature,
+      webSearch: config.llm.webSearch,
+      timeoutMs: config.llm.timeoutMs,
+      maxTokens: config.llm.maxTokens,
+    });
+  const ttsFactory = () =>
+    createTts({
+      provider: config.tts.provider,
+      postProcess: config.tts.postProcess,
+      cacheDir: resolve(repoRoot, config.tts.cacheDir),
+      edge: config.tts.edge,
+      minimax: config.tts.minimax,
+      resolveEnv: (name) => process.env[name],
+    });
+  if (!(process.env[config.llm.apiKeyEnv] ?? '')) {
     console.error(
-      `[station] 缺少 LLM API key（环境变量 ${config.llm.apiKeyEnv}）：请在 .env 配置后重启。串场管线将保持静默（沉默保底）。`,
+      `[station] 缺少 LLM API key（环境变量 ${config.llm.apiKeyEnv}）：可在页面右上角设置面板配置，或写入 .env 后重启。串场管线将保持静默（沉默保底）。`,
     );
   }
   const persona = readFileSync(resolve(repoRoot, 'config', 'persona.md'), 'utf-8');
@@ -57,28 +77,15 @@ async function main(): Promise<void> {
     tracks,
     libraryRoot,
     clock: systemClock,
-    llm: createOpenAiCompatibleLlm({
-      baseUrl: config.llm.baseUrl,
-      apiKey,
-      model: config.llm.model,
-      temperature: config.llm.temperature,
-      webSearch: config.llm.webSearch,
-      timeoutMs: config.llm.timeoutMs,
-      maxTokens: config.llm.maxTokens,
-    }),
-    tts: createTts({
-      provider: config.tts.provider,
-      postProcess: config.tts.postProcess,
-      cacheDir: resolve(repoRoot, config.tts.cacheDir),
-      edge: config.tts.edge,
-      minimax: config.tts.minimax,
-      resolveEnv: (name) => process.env[name],
-    }),
+    llmFactory,
+    ttsFactory,
     store,
     retentionDays: config.messages.retentionDays,
     memoryConfig: config.memory,
     maxSegmentChars: config.llm.maxSegmentChars,
     maxSegmentCharsByKind: config.llm.maxSegmentCharsByKind,
+    envPath: resolve(repoRoot, '.env'),
+    keyDefs: keyDefsFor(config),
   });
 
   const server = serve({ fetch: radio.app.fetch, port: config.station.port }, (info) => {

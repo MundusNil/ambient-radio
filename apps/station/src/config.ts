@@ -1,12 +1,12 @@
 /** 配置加载：station.config.json → 类型化配置（默认值兜底；调电台=改配置，D 决策） */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { EngineConfig, MemoryConfig, SchedulerConfig, SegmentKind } from '@ambient-radio/core';
+import type { EngineConfig, MemoryConfig, SchedulerConfig, SegmentKind } from '@mock-radio/core';
 import {
   DEFAULT_ENGINE_CONFIG,
   DEFAULT_MEMORY_CONFIG,
   DEFAULT_SCHEDULER_CONFIG,
-} from '@ambient-radio/core';
+} from '@mock-radio/core';
 import { findRepoRoot } from './paths';
 
 interface RawJson {

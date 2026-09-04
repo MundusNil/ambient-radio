@@ -1,4 +1,4 @@
-import type { Track } from '@ambient-radio/core';
+import type { Track } from '@mock-radio/core';
 import { describe, expect, it } from 'vitest';
 import { createStore } from './store';
 

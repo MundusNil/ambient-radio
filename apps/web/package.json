@@ -1,5 +1,5 @@
 {
-  "name": "@ambient-radio/web",
+  "name": "@mock-radio/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ambient-radio/shared": "workspace:*",
+    "@mock-radio/shared": "workspace:*",
     "@fontsource/instrument-serif": "^5.3.0",
     "@fontsource/noto-serif-sc": "^5.2.8",
     "@paper-design/shaders": "0.0.80",

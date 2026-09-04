@@ -1,4 +1,4 @@
-# @ambient-radio/station
+# @mock-radio/station
 
 电台守护进程：组装 core 的大脑（节目引擎 + 曲库调度器）为真实播出时间线。
 

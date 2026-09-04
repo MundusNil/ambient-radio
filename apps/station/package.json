@@ -1,5 +1,5 @@
 {
-  "name": "@ambient-radio/station",
+  "name": "@mock-radio/station",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -9,9 +9,9 @@
     "voice:compare": "tsx src/voice-compare.ts"
   },
   "dependencies": {
-    "@ambient-radio/adapters": "workspace:*",
-    "@ambient-radio/core": "workspace:*",
-    "@ambient-radio/shared": "workspace:*",
+    "@mock-radio/adapters": "workspace:*",
+    "@mock-radio/core": "workspace:*",
+    "@mock-radio/shared": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "hono": "^4.13.3",
     "ws": "^8.21.3"

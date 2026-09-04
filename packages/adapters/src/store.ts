@@ -5,7 +5,7 @@
  * 「电台重启不失忆」：时间线从 plays 表重建。
  */
 import { randomUUID } from 'node:crypto';
-import type { MemoryKind, MemoryRecordL1, Segment, SegmentKind, Track } from '@ambient-radio/core';
+import type { MemoryKind, MemoryRecordL1, Segment, SegmentKind, Track } from '@mock-radio/core';
 import Database from 'better-sqlite3';
 
 export interface PlayRow {

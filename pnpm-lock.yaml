@@ -20,18 +20,18 @@ importers:
 
   apps/station:
     dependencies:
-      '@ambient-radio/adapters':
-        specifier: workspace:*
-        version: link:../../packages/adapters
-      '@ambient-radio/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ambient-radio/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.3)
+      '@mock-radio/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@mock-radio/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@mock-radio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       hono:
         specifier: ^4.13.3
         version: 4.13.3
@@ -54,15 +54,15 @@ importers:
 
   apps/web:
     dependencies:
-      '@ambient-radio/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@fontsource/instrument-serif':
         specifier: ^5.3.0
         version: 5.3.0
       '@fontsource/noto-serif-sc':
         specifier: ^5.2.8
         version: 5.2.8
+      '@mock-radio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@paper-design/shaders':
         specifier: 0.0.80
         version: 0.0.80
@@ -91,7 +91,7 @@ importers:
 
   packages/adapters:
     dependencies:
-      '@ambient-radio/core':
+      '@mock-radio/core':
         specifier: workspace:*
         version: link:../core
       better-sqlite3:

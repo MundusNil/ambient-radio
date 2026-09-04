@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@ambient-radio/adapters', () => ({
+vi.mock('@mock-radio/adapters', () => ({
   probeDurationMs: vi.fn(async () => 180_000),
 }));
 

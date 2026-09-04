@@ -1,13 +1,13 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { serve } from '@hono/node-server';
 import {
   createOpenAiCompatibleLlm,
   createStore,
   createTts,
   systemClock,
-} from '@ambient-radio/adapters';
-import { getDayPartContext } from '@ambient-radio/core';
-import { serve } from '@hono/node-server';
+} from '@mock-radio/adapters';
+import { getDayPartContext } from '@mock-radio/core';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
 import { keyDefsFor } from './keys';

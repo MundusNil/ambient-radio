@@ -33,6 +33,8 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { DuckingConfig } from './config';
 import type { KeyDef } from './keys';
 import { applyKeys, keyStatus } from './keys';
+import type { VoiceConfigShape } from './voice';
+import { applyVoiceSettings, CADENCE_PRESETS, readVoiceSettings } from './voice';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -98,9 +100,20 @@ export interface RadioDeps {
   envPath: string;
   /** 面板可配置的密钥白名单（来自 station.config.json 声明的 env 名） */
   keyDefs: KeyDef[];
+  /** config/station.config.json 绝对路径（语音设置写回用，铁律 4） */
+  configPath: string;
+  /** 内存 runtime 配置（与 engineConfig 同一对象引用；语音设置热更新写这里） */
+  runtimeConfig: VoiceConfigShape;
 }
 
-export function createRadio(deps: RadioDeps) {
+export interface Radio {
+  app: Hono;
+  start(): void;
+  stop(): void;
+  attachWs(server: ServerType): void;
+}
+
+export function createRadio(deps: RadioDeps): Radio {
   const { tracks, libraryRoot, clock } = deps;
   const trackById = new Map(tracks.map((t) => [t.id, t]));
   /** 当前生效的客户端（POST /api/admin/keys 后由工厂重建覆盖） */
@@ -354,10 +367,12 @@ export function createRadio(deps: RadioDeps) {
     c.json({
       station: { name: deps.stationName, host: deps.hostName },
       audio: { ducking: deps.ducking, crossfadeMs: deps.crossfadeMs },
+      voice: {
+        enabled: deps.runtimeConfig.engine.voiceEnabled,
+        speechVolume: deps.runtimeConfig.audio.speechVolume ?? 1,
+      },
     }),
   );
-
-  // ---- 维护者审查（P3，FR-100：与普通收听体验分离；单机版无鉴权，公网部署前需加） ----
 
   app.get('/api/admin/memories', (c) => c.json(deps.store.listMemories()));
 
@@ -401,6 +416,52 @@ export function createRadio(deps: RadioDeps) {
       currentTts = deps.ttsFactory();
       console.log(`[radio] 🔑 密钥已更新并写入 .env：${Object.keys(updates).join(', ')}`);
       return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  // ---- 设置面板：语音设置（写 station.config.json + 热生效；铁律 4）----
+
+  /** 当前语音设置 + 频率档位预设（面板渲染用） */
+  app.get('/api/admin/voice', (c) =>
+    c.json({ settings: readVoiceSettings(deps.runtimeConfig), cadences: CADENCE_PRESETS }),
+  );
+
+  /** 应用语音设置：写盘 → 更新内存配置 → 引擎热开关 → 重建 TTS（语速） */
+  app.post('/api/admin/voice', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: '请求体不是合法 JSON' }, 400);
+    }
+    if (typeof body !== 'object' || body === null || !('settings' in body)) {
+      return c.json({ error: '缺少 settings 对象' }, 400);
+    }
+    const patch = body.settings;
+    if (typeof patch !== 'object' || patch === null) {
+      return c.json({ error: 'settings 必须是对象' }, 400);
+    }
+    try {
+      const settings = applyVoiceSettings(
+        deps.configPath,
+        deps.runtimeConfig,
+        patch as Record<string, unknown>,
+      );
+      // 引擎热开关：关闭时丢弃在途段落立即静默；开启时恢复规划
+      engine.setVoiceEnabled(settings.enabled);
+      // 语速变了：重建 TTS 客户端（下次合成即新值）
+      currentTts = deps.ttsFactory();
+      console.log(
+        `[radio] 🎙️ 语音设置已更新并写入配置：enabled=${settings.enabled} 语速=${settings.speechRate} 音量=${settings.speechVolume} 频率=${settings.cadence}`,
+      );
+      broadcast({
+        type: 'voice-settings',
+        enabled: settings.enabled,
+        speechVolume: settings.speechVolume,
+      });
+      return c.json({ ok: true, settings });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
     }

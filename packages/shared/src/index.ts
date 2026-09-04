@@ -38,6 +38,8 @@ export type ServerEvent =
   | { type: 'voice'; segmentId: string; startedAt: number; durationMs: number }
   | { type: 'sync'; state: StationState }
   | { type: 'received'; id: string }
+  /** 语音设置热更新：前端据此即时应用主播音量 / 停止在播语音 */
+  | { type: 'voice-settings'; enabled: boolean; speechVolume: number }
   | OffAirEvent;
 
 /** WS 上行事件 */

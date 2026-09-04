@@ -381,3 +381,44 @@ describe('engine · 60% 预取（边界段落来不及则放弃）', () => {
     expect(e.onSegmentReady('seg-unknown', 15_000)).toBe(false);
   });
 });
+
+describe('engine · 语音功能开关（FR-042：关闭 = 零规划零费用，只放音乐）', () => {
+  const off = { ...cfg, voiceEnabled: false };
+
+  it('关闭时到期不规划、留言不进队列、台呼不触发', () => {
+    const e = createEngine({ config: off, rng: fixed(0) });
+    e.onTrackStarted(T('a'), 0);
+    e.onListenersChanged(1); // 会置位 stationIdDue
+    expect(e.tick(30_000)).toEqual([]); // 台呼节点：静默
+    e.onMessage({ id: 'm1', body: '在吗', receivedAt: 40_000 });
+    expect(e.tick(40_000)).toEqual([]); // 留言不进队列
+    expect(e.tick(300_000)).toEqual([]); // 主动串场到期：静默
+  });
+
+  it('关闭时曲目时间线照常推进（D5：音乐永远是主体）', () => {
+    const e = createEngine({ config: off, rng: fixed(0) });
+    e.onTrackStarted(T('a', 60_000), 0);
+    expect(e.tick(60_000)).toEqual([{ type: 'track-ended', trackId: 'a' }]);
+  });
+
+  it('setVoiceEnabled(false) 热关闭：丢弃在途段落，立即静默', () => {
+    const e = createEngine({ config: cfg, rng: fixed(0) });
+    e.onTrackStarted(T('a'), 0);
+    const [plan] = e.tick(300_000);
+    if (plan?.type !== 'plan-segment') throw new Error('expect plan');
+    e.setVoiceEnabled(false);
+    // 迟到的就绪不再被接受（段落已丢弃）
+    expect(e.onSegmentReady(plan.id, 15_000)).toBe(false);
+    expect(e.tick(301_000)).toEqual([]);
+    expect(e.tick(600_000)).toEqual([]);
+  });
+
+  it('setVoiceEnabled(true) 热开启：恢复规划', () => {
+    const e = createEngine({ config: off, rng: fixed(0) });
+    e.onTrackStarted(T('a'), 0);
+    expect(e.tick(300_000)).toEqual([]);
+    e.setVoiceEnabled(true);
+    const events = e.tick(301_000);
+    expect(events[0]).toMatchObject({ type: 'plan-segment', kind: 'interlude' });
+  });
+});

@@ -6,13 +6,17 @@ import { planTuneIn, type ServerEvent, type StationState } from '@mock-radio/sha
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   applyKeys as apiApplyKeys,
+  applyVoiceSettings as apiApplyVoiceSettings,
+  type CadencePreset,
   calibrate,
   connectWs,
   fetchConfig,
   fetchKeyStatus,
   fetchState,
+  fetchVoiceSettings,
   type KeyStatus,
   type StationInfo,
+  type VoiceSettings,
   type WsHandle,
 } from './api';
 import { RadioAudio } from './audio';
@@ -38,7 +42,7 @@ const scheme = ref<OrbScheme>(initialScheme());
 // PyCharm 式设置弹窗：<dialog> 模态；主题改动先预览，「确定/应用」才落库，「取消」回退
 const settingsOpen = ref(false);
 const settingsDialogEl = ref<HTMLDialogElement | null>(null);
-const activeSection = ref<'theme' | 'api'>('theme');
+const activeSection = ref<'theme' | 'voice' | 'api'>('theme');
 const pendingSchemeId = ref(scheme.value.id);
 
 /** 主题改动只记在 pendingSchemeId：点「应用/确定」才落到 scheme（背景不即时变化） */
@@ -48,9 +52,12 @@ function openSettings(): void {
   pendingSchemeId.value = scheme.value.id;
   activeSection.value = 'theme';
   keysError.value = '';
+  voiceError.value = '';
+  voiceDraft.value = {};
   settingsDialogEl.value?.showModal();
   // 每次打开都重取：.env 手改/网页应用后掩码点数都是最新的
   void loadKeys();
+  void loadVoice();
 }
 // ---- 设置弹窗「API 管理」：模型密钥（豆包 / MiniMax）----
 // 安全模型：真实值永不出服务器；面板只拿「是否已配置」。
@@ -64,8 +71,88 @@ const keyEditing = ref<Record<string, boolean>>({});
 const keyPristine = ref<Record<string, boolean>>({});
 const keysApplying = ref(false);
 const keysError = ref('');
+
 const keysSaved = ref(false);
 let keysSavedTimer: ReturnType<typeof setTimeout> | undefined;
+// ---- 设置弹窗「语音」：总开关 / 语速 / 主播音量 / 发言频率 ----
+// 草稿模型与密钥一致：改动先进 voiceDraft，点「应用/确定」才 POST 落盘 + 热生效。
+const voiceSettings = ref<VoiceSettings | null>(null);
+const cadences = ref<CadencePreset[]>([]);
+const voiceLoading = ref(false);
+const voiceLoaded = ref(false);
+const voiceDraft = ref<Partial<VoiceSettings>>({});
+const voiceApplying = ref(false);
+const voiceError = ref('');
+const voiceSaved = ref(false);
+let voiceSavedTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** 面板生效值：草稿优先，否则服务端当前值 */
+function voiceVal<K extends keyof VoiceSettings>(key: K): VoiceSettings[K] | undefined {
+  const draft = voiceDraft.value[key];
+  if (draft !== undefined) return draft as VoiceSettings[K];
+  return voiceSettings.value?.[key];
+}
+
+const hasVoiceDrafts = computed(() => Object.keys(voiceDraft.value).length > 0);
+
+async function loadVoice(): Promise<void> {
+  if (voiceLoading.value) return;
+  voiceLoading.value = true;
+  voiceError.value = '';
+  try {
+    const res = await fetchVoiceSettings();
+    voiceSettings.value = res.settings;
+    cadences.value = res.cadences;
+    voiceLoaded.value = true;
+  } catch {
+    voiceError.value = '语音设置读取失败：电台服务未连接';
+  } finally {
+    voiceLoading.value = false;
+  }
+}
+
+function setVoice<K extends keyof VoiceSettings>(key: K, value: VoiceSettings[K]): void {
+  if (voiceSettings.value?.[key] === value) {
+    const rest = { ...voiceDraft.value };
+    delete rest[key];
+    voiceDraft.value = rest;
+  } else {
+    voiceDraft.value = { ...voiceDraft.value, [key]: value };
+  }
+}
+
+async function applyVoiceUpdates(): Promise<boolean> {
+  if (!hasVoiceDrafts.value) return true;
+  voiceApplying.value = true;
+  voiceError.value = '';
+  try {
+    const next = await apiApplyVoiceSettings(voiceDraft.value);
+    voiceSettings.value = next;
+    voiceDraft.value = {};
+    // 音量即时生效（服务端也会广播，这里本地先应用，不等往返）
+    audio.setSpeechVolume(next.speechVolume);
+    voiceSaved.value = true;
+    clearTimeout(voiceSavedTimer);
+    voiceSavedTimer = setTimeout(() => {
+      voiceSaved.value = false;
+    }, 2500);
+    return true;
+  } catch (err) {
+    voiceError.value = err instanceof Error ? err.message : '语音设置应用失败';
+    return false;
+  } finally {
+    voiceApplying.value = false;
+  }
+}
+
+function onVoiceEnabledChange(e: Event): void {
+  setVoice('enabled', (e.target as HTMLInputElement).checked);
+}
+
+function onVoiceRange(key: 'speechRate' | 'speechVolume', e: Event): void {
+  const v = Number((e.target as HTMLInputElement).value);
+  if (Number.isFinite(v)) setVoice(key, v);
+}
 
 const hasKeyDrafts = computed(() =>
   Object.values(keyDrafts.value).some((v) => v.trim().length > 0),
@@ -82,13 +169,18 @@ const keyGroups = computed(() => {
 });
 
 /** 有未保存改动才允许确定/应用（PyCharm：Apply 只在 dirty 时可用） */
-const canApply = computed(() => pendingSchemeId.value !== scheme.value.id || hasKeyDrafts.value);
-
+const canApply = computed(
+  () => pendingSchemeId.value !== scheme.value.id || hasKeyDrafts.value || hasVoiceDrafts.value,
+);
 async function applySettings(closeAfter: boolean): Promise<void> {
   const next = schemeById(pendingSchemeId.value);
   if (next.id !== scheme.value.id) {
     scheme.value = next;
     persistScheme(next.id);
+  }
+  if (hasVoiceDrafts.value) {
+    const ok = await applyVoiceUpdates();
+    if (!ok && closeAfter) return; // 语音设置写入失败：弹窗留在原地报错，不关
   }
   if (hasKeyDrafts.value) {
     const ok = await applyKeyUpdates();
@@ -99,9 +191,10 @@ async function applySettings(closeAfter: boolean): Promise<void> {
 
 function onSettingsClose(): void {
   settingsOpen.value = false;
-  // 取消 / ESC / 点遮罩：丢弃未应用的密钥草稿与待选主题（scheme 本就未变）
+  // 取消 / ESC / 点遮罩：丢弃未应用的密钥/语音草稿与待选主题（scheme 本就未变）
   keyDrafts.value = {};
   keyEditing.value = {};
+  voiceDraft.value = {};
 }
 
 async function loadKeys(): Promise<void> {
@@ -246,6 +339,9 @@ function handleEvent(event: ServerEvent): void {
         hostTalking.value = false;
       }, event.durationMs + 200);
     }
+  } else if (event.type === 'voice-settings') {
+    // 设置面板热更新：主播音量即时生效（关闭时引擎不再发 voice 事件，在播段自然播完）
+    audio.setSpeechVolume(event.speechVolume);
   } else if (event.type === 'received') {
     const pending = messages.value.find((m) => m.id.startsWith('pending-'));
     if (pending) pending.id = event.id;
@@ -286,6 +382,8 @@ watch(volume, (v) => audio.setVolume(v));
 
 onMounted(async () => {
   info.value = await fetchConfig().catch(() => null);
+  // 主播音量初值：开台前先落到 audio（unlock 时读取），后续由 voice-settings 事件热更新
+  if (info.value?.voice) audio.setSpeechVolume(info.value.voice.speechVolume);
   await refreshState();
   // WS 之外的低频校时兜底（防本地时钟漂移）
   statePollTimer = setInterval(() => {
@@ -347,6 +445,14 @@ onUnmounted(() => {
           </button>
           <button
             class="settings-nav-item"
+            :class="{ active: activeSection === 'voice' }"
+            :aria-current="activeSection === 'voice' ? 'page' : undefined"
+            @click="activeSection = 'voice'"
+          >
+            语音
+          </button>
+          <button
+            class="settings-nav-item"
             :class="{ active: activeSection === 'api' }"
             :aria-current="activeSection === 'api' ? 'page' : undefined"
             @click="activeSection = 'api'"
@@ -395,6 +501,83 @@ onUnmounted(() => {
             </div>
           </section>
 
+          <section v-show="activeSection === 'voice'" aria-label="语音设置">
+            <h3 class="ui-label settings-section">语音</h3>
+            <p v-if="voiceLoading" class="key-note">读取中…</p>
+            <p v-else-if="!voiceLoaded" class="key-note">电台服务未连接，无法读取语音设置</p>
+            <div v-else class="voice-form">
+              <label class="voice-switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  class="ui-swatch-input"
+                  :checked="voiceVal('enabled') !== false"
+                  @change="onVoiceEnabledChange"
+                />
+                <span class="voice-switch-track" aria-hidden="true"><span class="voice-switch-thumb" /></span>
+                <span class="voice-switch-text">
+                  <span class="voice-switch-title">语音功能</span>
+                  <span class="key-note">开启时梦可按节奏串场说话；关闭后文字模型与语音合成都不再工作——只放音乐，不产生调用费用。</span>
+                </span>
+              </label>
+
+              <template v-if="voiceVal('enabled') !== false">
+                <div class="key-row">
+                  <label class="key-label" for="voice-rate">
+                    语速
+                    <span class="voice-value">{{ (voiceVal('speechRate') ?? 1).toFixed(2) }}×</span>
+                  </label>
+                  <input
+                    id="voice-rate"
+                    class="ui-slider voice-slider"
+                    type="range"
+                    min="0.5"
+                    max="1.5"
+                    step="0.05"
+                    :value="voiceVal('speechRate') ?? 1"
+                    @input="onVoiceRange('speechRate', $event)"
+                  />
+                </div>
+                <div class="key-row">
+                  <label class="key-label" for="voice-vol">
+                    主播音量
+                    <span class="voice-value">{{ Math.round((voiceVal('speechVolume') ?? 1) * 100) }}%</span>
+                  </label>
+                  <input
+                    id="voice-vol"
+                    class="ui-slider voice-slider"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    :value="voiceVal('speechVolume') ?? 1"
+                    @input="onVoiceRange('speechVolume', $event)"
+                  />
+                </div>
+                <fieldset class="voice-cadence">
+                  <legend class="voice-cadence-title">发言频率</legend>
+                  <div class="cadence-cards">
+                    <label v-for="p in cadences" :key="p.id" class="cadence-card">
+                      <input
+                        class="ui-swatch-input"
+                        type="radio"
+                        name="voice-cadence"
+                        :value="p.id"
+                        :checked="voiceVal('cadence') === p.id"
+                        @change="setVoice('cadence', p.id)"
+                      />
+                      <span class="cadence-head">
+                        <span class="cadence-name">{{ p.label }}</span>
+                        <span class="cadence-rate">{{ p.perHour }}</span>
+                      </span>
+                      <span class="cadence-hint">{{ p.hint }}</span>
+                    </label>
+                  </div>
+                </fieldset>
+              </template>
+            </div>
+          </section>
+
           <section v-show="activeSection === 'api'" aria-label="模型密钥">
             <h3 class="ui-label settings-section">模型密钥</h3>
             <p v-if="keysLoading" class="key-note">读取中…</p>
@@ -435,20 +618,20 @@ onUnmounted(() => {
       </div>
 
       <footer class="settings-foot">
-        <p v-if="keysError" class="key-error" role="alert">{{ keysError }}</p>
-        <p v-else-if="keysSaved" class="key-saved" role="status">已写入 .env，即刻生效</p>
+        <p v-if="keysError || voiceError" class="key-error" role="alert">{{ keysError || voiceError }}</p>
+        <p v-else-if="keysSaved || voiceSaved" class="key-saved" role="status">已保存，即刻生效</p>
         <div class="settings-buttons">
-          <button class="ui-button ui-button--primary" :disabled="!canApply || keysApplying" @click="applySettings(true)">
+          <button class="ui-button ui-button--primary" :disabled="!canApply || keysApplying || voiceApplying" @click="applySettings(true)">
             确定
           </button>
           <button class="ui-button" @click="settingsDialogEl?.close()">取消</button>
           <button
             class="ui-button"
-            :disabled="!canApply || keysApplying"
-            :aria-busy="keysApplying"
+            :disabled="!canApply || keysApplying || voiceApplying"
+            :aria-busy="keysApplying || voiceApplying"
             @click="applySettings(false)"
           >
-            {{ keysApplying ? '应用中' : '应用' }}
+            {{ keysApplying || voiceApplying ? '应用中' : '应用' }}
           </button>
         </div>
       </footer>

@@ -16,6 +16,8 @@ export interface SchedulerConfig {
 }
 
 export interface EngineConfig {
+  /** 语音功能总开关：false 时引擎不规划任何段落（LLM/TTS 均不触发，零费用，只放音乐） */
+  voiceEnabled: boolean;
   /** FR-031：主动串场间隔采样区间（8~12 次/小时，30 分钟约 4~6 次） */
   talkIntervalMs: [number, number];
   /** 相邻两段之间的最小间隔（保护性下限） */
@@ -48,6 +50,7 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
 };
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
+  voiceEnabled: true,
   talkIntervalMs: [300 * 1000, 480 * 1000],
   minTalkGapMs: 90 * 1000,
   preferReplyMs: 0,

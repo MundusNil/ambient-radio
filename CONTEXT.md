@@ -1,4 +1,4 @@
-# ambient-radio
+# mock-radio
 
 一条公共时间线：音乐永远是主体，主播梦可按自己的节奏轻轻串场。本文件是领域用语；架构用语见技能 LANGUAGE.md（module / interface / seam / adapter）。
 

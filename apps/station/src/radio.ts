@@ -9,7 +9,8 @@ import { stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import type { Clock, Store } from '@ambient-radio/adapters';
+import type { ServerType } from '@hono/node-server';
+import type { Clock, Store } from '@mock-radio/adapters';
 import type {
   EngineConfig,
   EngineEvent,
@@ -19,15 +20,14 @@ import type {
   SegmentKind,
   Track,
   TtsClient,
-} from '@ambient-radio/core';
+} from '@mock-radio/core';
 import {
   createEngine,
   createProgrammeMemory,
   createScheduler,
   createSegmentProducer,
-} from '@ambient-radio/core';
-import type { ServerEvent, StationState } from '@ambient-radio/shared';
-import type { ServerType } from '@hono/node-server';
+} from '@mock-radio/core';
+import type { ServerEvent, StationState } from '@mock-radio/shared';
 import { type Context, Hono } from 'hono';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { DuckingConfig } from './config';

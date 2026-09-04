@@ -2,7 +2,7 @@
 // 收音机面板：调频进入（D5）—— 开台即跳进正在进行的节目。
 // 控制只有开台/关台 + 总音量（FR-001）；无进度条、无切歌、无回放（PRD §8.2）。
 
-import { planTuneIn, type ServerEvent, type StationState } from '@ambient-radio/shared';
+import { planTuneIn, type ServerEvent, type StationState } from '@mock-radio/shared';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   applyKeys as apiApplyKeys,

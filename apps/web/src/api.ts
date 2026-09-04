@@ -1,5 +1,5 @@
 /** 前端 API/WS 客户端：调频进入（对时）、事件流、断线重连、上行留言 */
-import type { ClientEvent, ServerEvent, StationState } from '@ambient-radio/shared';
+import type { ClientEvent, ServerEvent, StationState } from '@mock-radio/shared';
 
 export interface StationInfo {
   station: { name: string; host: string };

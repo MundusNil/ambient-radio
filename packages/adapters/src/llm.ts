@@ -5,13 +5,13 @@ import type {
   SegmentDraft,
   SegmentPrompt,
   SpeechLine,
-} from '@ambient-radio/core';
+} from '@mock-radio/core';
 import {
   joinLinesText,
   MEMORY_EXTRACTION_SYSTEM,
   normalizeSpeechLines,
   parseMemoryExtraction,
-} from '@ambient-radio/core';
+} from '@mock-radio/core';
 
 export interface OpenAiCompatibleOptions {
   baseUrl: string;

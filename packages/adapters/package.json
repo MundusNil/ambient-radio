@@ -1,5 +1,5 @@
 {
-  "name": "@ambient-radio/adapters",
+  "name": "@mock-radio/adapters",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@ambient-radio/core": "workspace:*",
+    "@mock-radio/core": "workspace:*",
     "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {

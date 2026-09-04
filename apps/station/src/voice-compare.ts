@@ -6,7 +6,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createEdgeTts } from '@ambient-radio/adapters';
+import { createEdgeTts } from '@mock-radio/adapters';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
 import { findRepoRoot } from './paths';

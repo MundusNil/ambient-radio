@@ -2,8 +2,8 @@
 import { createHash } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import { basename, extname, join, relative } from 'node:path';
-import { probeDurationMs } from '@ambient-radio/adapters';
-import type { Track } from '@ambient-radio/core';
+import { probeDurationMs } from '@mock-radio/adapters';
+import type { Track } from '@mock-radio/core';
 
 const AUDIO_EXT = new Set(['.mp3', '.flac', '.ogg', '.m4a', '.wav', '.opus', '.aac']);
 

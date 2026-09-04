@@ -10,8 +10,8 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { SpeechLine, SpeechPart, SynthesizedSpeech, TtsClient } from '@ambient-radio/core';
-import { groupSpeechParts, joinLinesText, normalizeSpeechLines } from '@ambient-radio/core';
+import type { SpeechLine, SpeechPart, SynthesizedSpeech, TtsClient } from '@mock-radio/core';
+import { groupSpeechParts, joinLinesText, normalizeSpeechLines } from '@mock-radio/core';
 import { ffmpegPath } from './ffmpeg-bin';
 import { probeDurationMs } from './ffprobe';
 

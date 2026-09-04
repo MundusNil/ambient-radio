@@ -5,7 +5,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { createStore } from '@ambient-radio/adapters';
+import { createStore } from '@mock-radio/adapters';
 import { loadStationConfig } from './config';
 import { loadEnvFile } from './env';
 import { scanLibrary } from './library';

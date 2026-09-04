@@ -5,16 +5,17 @@
 
 ## 去哪查
 
-| 要什么 | 文档 |
-| --- | --- |
-| 行为 / 交互 / 字段 / 边界 | [`docs/product-requirements.md`](docs/product-requirements.md)（FR / CR / ER；反播放器清单见 §8.2） |
-| 架构 / 灵魂决策 D1~D9 | [`docs/technical-design.md`](docs/technical-design.md) |
-| 词汇、流程、验证、提交、命令 | [`docs/guide/团队协作与开发规范.md`](docs/guide/团队协作与开发规范.md) |
-| AI 工作流、熔断、技能用法 | [`docs/guide/AI原生工程化SOP.md`](docs/guide/AI原生工程化SOP.md)、[`.agents/skills/`](.agents/skills/) |
-| 落主线 / PR | [`docs/guide/land-main-workflow.md`](docs/guide/land-main-workflow.md) |
-| 部署 | [`docs/guide/部署与常驻.md`](docs/guide/部署与常驻.md) |
+> 详细文档（PRD、技术设计、协作规范、SOP）在维护者本机 `docs/`，不随仓库分发。公开仓库以本文件 + `README.md` + `CONTEXT.md` 为准。
 
-涉及行为必须先读 PRD 对应章节；涉及结构必须先读技术方案。禁止凭记忆或「通用最佳实践」补产品边界。默认直觉（播放器、字幕、关语音、模式切换、听众画像）几乎总是错的。
+| 要什么 | 看哪里 |
+| --- | --- |
+| 产品行为 / 反播放器清单 | [`README.md`](README.md) 开头「它不是什么」 |
+| 领域用语（梦可 / 段落 / 自然节点 / ducking…） | [`CONTEXT.md`](CONTEXT.md) |
+| 架构 / 运行时 | 直接读代码：`packages/core`（引擎）+ `apps/station/src`（组装）；本机 `docs/technical-design.md` |
+| 可调参数 | [`config/station.config.json`](config/station.config.json)（TS 镜像：`packages/core/src/config.ts`） |
+| 她是谁 | [`config/persona.md`](config/persona.md)（L0，只读） |
+
+涉及行为先读 README 边界清单；涉及结构先读代码与配置。禁止凭记忆或「通用最佳实践」补产品边界。默认直觉（播放器、字幕、关语音、模式切换、听众画像）几乎总是错的。
 
 ## 铁律（细节在协作规范 §6 / §7）
 

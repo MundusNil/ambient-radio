@@ -5,7 +5,7 @@
  * 用户只需两条命令：pnpm install && pnpm start
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freeRadioPorts, radioPorts } from './ports.mjs';
@@ -66,19 +66,15 @@ if (hasLocalFf) console.log(`  ${OK} ffmpeg（仓库自带）`);
 else if (onPath) console.log(`  ${OK} ffmpeg（系统 PATH）`);
 else blockers.push('缺少 ffprobe/ffmpeg：把两个 exe 放进 tools/ffmpeg/，或安装到系统 PATH');
 
-// 语音默认走 MiniMax（云端 TTS，无需本地 Python/edge-tts）；如改回 edge-tts 再按需在 .env 配本地环境。
+// 密钥不再是启动门槛：没配则梦可静默（音乐照常），启动后在面板右上角「设置 → API 管理」填写即热生效。
 const envPath = join(ROOT, '.env');
 if (existsSync(envPath)) {
   const envTxt = readFileSync(envPath, 'utf8');
-  if (/sk-your-|your-key|changeme/i.test(envTxt))
+  if (/=(your[-_]|sk-your|changeme|<)/im.test(envTxt))
     warnings.push('.env 里的 API key 还是占位符，梦可会保持沉默（音乐照常播放）');
-  else console.log(`  ${OK} .env 已配置`);
+  else console.log(`  ${OK} 密钥已配置（.env）`);
 } else {
-  const tpl = join(ROOT, '.env.example');
-  if (existsSync(tpl)) {
-    copyFileSync(tpl, envPath);
-    warnings.push('已生成 .env，请填入 ARK_API_KEY，否则梦可会保持沉默（音乐照常播放）');
-  } else blockers.push('缺少 .env 与 .env.example');
+  console.log(`  ${OK} 未配置密钥（可启动后在面板「设置」里填，音乐照常）`);
 }
 
 console.log(cy('\n[2/3] 曲库'));
